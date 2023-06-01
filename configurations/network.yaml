@@ -1,0 +1,256 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: This template deploys the network infrastructure
+Parameters:
+  EnvironmentName:
+    Description: An environment name for VPC network configuration
+    Type: String
+    Default: UdacityHighAvailabilityApp
+  VpcCIDR:
+    Description: CIDR IP range for VPC configuration (default is 10.0.0.0/16)
+    Type: String
+    Default: 10.0.0.0/16
+  PublicSubnetCIDR1a:
+    Description: Public subnet CIDR for availability zone 1a
+    Type: String
+    Default: 10.0.0.0/24
+  PublicSubnetCIDR1b:
+    Description: Public subnet CIDR for availability zone 1b
+    Type: String
+    Default: 10.0.1.0/24
+  PrivateSubnetCIDR1a:
+    Description: Private Subnet CIDR for availability zone 1a
+    Type: String
+    Default: 10.0.2.0/24
+  PrivateSubnetCIDR1b:
+    Description: Private Subnet CIDR for availability zone 1b
+    Type: String
+    Default: 10.0.3.0/24
+Resources:
+  VPC:
+    Type: 'AWS::EC2::VPC'
+    Properties:
+      CidrBlock: !Ref VpcCIDR
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value:
+            Fn::Join:
+              - ''
+              -  - !Ref EnvironmentName
+                 - "-vpc-"
+                 - Ref: "AWS::Region"
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value:
+            Fn::Join:
+              - ''
+              - - !Ref EnvironmentName
+                - '-vpc-internet-gateway-'
+                - Ref: "AWS::Region"
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+        InternetGatewayId: !Ref InternetGateway
+        VpcId: !Ref VPC
+  # ---------- Routing for public routes ---------
+  # ---------- Public Route Table ----------------
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value:
+            Fn::Join:
+              - ''
+              - - !Ref EnvironmentName
+                - '-vpc-public-route-table-'
+                - Ref: "AWS::Region"
+  DefaultPublicRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+  # ------------ Availability Zones -------------------
+  # ------------ Public Subnet ------------------------
+  PublicSubnet1a:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      CidrBlock: !Ref PublicSubnetCIDR1a
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value:
+            Fn::Join:
+              - ''
+              - - !Ref EnvironmentName
+                - '-vpc-public-subnet-availability-zone-1a-'
+                - Ref: "AWS::Region"
+  PublicSubnet1b:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 1, !GetAZs '' ]
+      CidrBlock: !Ref PublicSubnetCIDR1b
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value:
+            Fn::Join:
+              - ''
+              - - !Ref EnvironmentName
+                - '-vpc-public-subnet-availability-zone-1b-'
+                - Ref: "AWS::Region"
+  # ------------ Private Subnet ------------------------
+  PrivateSubnet1a:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      CidrBlock: !Ref PrivateSubnetCIDR1a
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value:
+            Fn::Join:
+              - ''
+              - - !Ref EnvironmentName
+                - '-vpc-private-subnet-availability-zone-1a-'
+                - Ref: "AWS::Region"
+  PrivateSubnet1b:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 1, !GetAZs '' ]
+      CidrBlock: !Ref PrivateSubnetCIDR1b
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value:
+            Fn::Join:
+              - ''
+              - - !Ref EnvironmentName
+                - '-vpc-private-subnet-availability-zone-1b-'
+                - Ref: "AWS::Region"
+  # ------------ Elastic IPs ------------------------
+  ElasticIP1a:
+    Type: AWS::EC2::EIP
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      Domain: VPC
+      Tags:
+        - Key: Name
+          Value:
+            Fn::Join:
+              - ''
+              - - !Ref EnvironmentName
+                - '-vpc-elastic-ip-availability-zone-1a-'
+                - Ref: "AWS::Region"
+  ElasticIP1b:
+    Type: AWS::EC2::EIP
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      Domain: VPC
+      Tags:
+        - Key: Name
+          Value:
+            Fn::Join:
+              - ''
+              - - !Ref EnvironmentName
+                - '-vpc-elastic-ip-availability-zone-1b-'
+                - Ref: "AWS::Region"
+  # ------------ VPC NAT Gateways ------------------------
+  NATGateway1a:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt ElasticIP1a.AllocationId
+      SubnetId: !Ref PublicSubnet1a
+      Tags:
+        - Key: Name
+          Value:
+            Fn::Join:
+              - ''
+              - - !Ref EnvironmentName
+                - '-vpc-nat-gateway-availability-zone-1a-'
+                - Ref: "AWS::Region"
+  NATGateway1b:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt ElasticIP1b.AllocationId
+      SubnetId: !Ref PublicSubnet1b
+      Tags:
+        - Key: Name
+          Value:
+            Fn::Join:
+              - ''
+              - - !Ref EnvironmentName
+                - '-vpc-nat-gateway-availability-zone-1b-'
+                - Ref: "AWS::Region"
+  # ------------ Public subnet routing configurations ------------------------
+  PublicSubnet1aRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet1a
+  PublicSubnet1bRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet1b
+  # ------------ Private Route Tables ------------------------
+  PrivateRouteTable1a:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value:
+            Fn::Join:
+              - ''
+              - - !Ref EnvironmentName
+                - '-vpc-private-route-table-availability-zone-1a-'
+                - Ref: "AWS::Region"
+  DefaultPrivateRoute1a:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable1a
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NATGateway1a
+  PrivateSubnet1aRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable1a
+      SubnetId: !Ref PrivateSubnet1a
+  PrivateRouteTable1b:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value:
+            Fn::Join:
+              - ''
+              - - !Ref EnvironmentName
+                - '-vpc-private-route-table-availability-zone-1b-'
+                - Ref: "AWS::Region"
+  DefaultPrivateRoute1b:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable1b
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NATGateway1b
+  PrivateSubnet1bRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable1b
+      SubnetId: !Ref PrivateSubnet1b
+  # TODO: Add Security group for bastion instance
+  # TODO: Add security group for server of private subnet
+  # TODO: Add Application Load Balancer
+  # TODO: Config target group of private subnet Auto scaling group and listener rules for ALB
