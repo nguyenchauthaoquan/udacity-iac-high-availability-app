@@ -401,19 +401,7 @@ Outputs:
     Value: !Ref PublicSubnet1b
     Export:
       Name: !Sub "PublicSubnet1b"
-  ElasticIP1a:
-    Value: !Ref ElasticIP1a
+  VPC:
+    Value: !Ref VPC
     Export:
-      Name: !Sub "ElasticIP1a"
-  ElasticIP1aAllocationId:
-    Value: !GetAtt ElasticIP1a.AllocationId
-    Export:
-      Name: !Sub "ElasticIP1aAllocationId"
-  ElasticIP1b:
-    Value: !Ref ElasticIP1b
-    Export:
-      Name: !Sub "ElasticIP1b"
-  ElasticIP1bAllocationId:
-    Value: !GetAtt ElasticIP1b.AllocationId
-    Export:
-      Name: !Sub "ElasticIP1bAllocationId"
+      Name: !Sub "VPC"
