@@ -1,0 +1,96 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: This template deploys the instances
+Parameters:
+  EnvironmentName:
+    Description: An environment name for VPC network configuration
+    Type: String
+    Default: UdacityHighAvailabilityApp
+  AdministratorManagedPolicy:
+    Description: "The AWS Managed Policy for the EC2 Instance Role"
+    Type: String
+Resources:
+  BastionIamRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: '/'
+
+  BastionIamPolicies:
+      Type: AWS::IAM::Policy
+      Properties:
+        PolicyName: fullAccess
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - 's3:*'
+                - "ec2:DescribeAddresses"
+                - "ec2:AllocateAddress"
+                - "ec2:DescribeInstances"
+                - "ec2:AssociateAddress"
+                - "ec2:ReleaseAddress"
+                - "ec2:DescribeAvailabilityZones"
+                - "ec2:describeCoipPools"
+                - "ec2:describePublicIpv4Pools"
+              Resource: '*'
+        Roles:
+          - !Ref BastionIamRole
+
+  BastionIamInstanceProfile:
+      Type: AWS::IAM::InstanceProfile
+      Properties:
+        Path: '/'
+        Roles:
+          - !Ref BastionIamRole
+  BastionKeyPair1a:
+    Type: AWS::EC2::KeyPair
+    Properties:
+      KeyName: !Sub "${AWS::StackName}-bastion-key-1a"
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-bastion-key-1a"
+  BastionKeyPair1b:
+    Type: AWS::EC2::KeyPair
+    Properties:
+      KeyName: !Sub "${AWS::StackName}-bastion-key-1b"
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-bastion-key-1b"
+  BastionHost1a:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t3.small
+      IamInstanceProfile: !Ref BastionIamInstanceProfile
+      ImageId: ami-0715c1897453cabd1
+      SecurityGroupIds:
+        - Fn::ImportValue: !Sub "BastionHostSecurityGroup1a"
+      SubnetId:
+        Fn::ImportValue: !Sub "PublicSubnet1a"
+      KeyName: !Ref BastionKeyPair1a
+  BastionHost1b:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t3.small
+      IamInstanceProfile: !Ref BastionIamInstanceProfile
+      ImageId: ami-0715c1897453cabd1
+      SecurityGroupIds:
+        - Fn::ImportValue: !Sub "BastionHostSecurityGroup1b"
+      SubnetId:
+        Fn::ImportValue: !Sub "PublicSubnet1b"
+      KeyName: !Ref BastionKeyPair1b
+  BastionEIPAssociation1a:
+    Type: AWS::EC2::EIPAssociation
+    Properties:
+      InstanceId:
+        Ref: BastionHost1a
+      AllocationId:
+        Fn::ImportValue: !Sub ElasticIP1aAllocationId

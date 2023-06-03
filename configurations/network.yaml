@@ -250,7 +250,170 @@ Resources:
     Properties:
       RouteTableId: !Ref PrivateRouteTable1b
       SubnetId: !Ref PrivateSubnet1b
-  # TODO: Add Security group for bastion instance
-  # TODO: Add security group for server of private subnet
-  # TODO: Add Application Load Balancer
-  # TODO: Config target group of private subnet Auto scaling group and listener rules for ALB
+  ALBSecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupDescription: Allow HTTP traffic to ALB
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+        - IpProtocol: TCP
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+  ALBTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      VpcId: !Ref VPC
+      Protocol: HTTP
+      Port: 80
+      HealthCheckIntervalSeconds: 30
+      HealthCheckPath: /index.html
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
+  ALBListenerRule:
+    Type: "AWS::ElasticLoadBalancingV2::Listener"
+    Properties:
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Protocol: HTTP
+      Port: 80
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref ALBTargetGroup
+  ApplicationLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Subnets:
+        - !Ref PublicSubnet1a
+        - !Ref PublicSubnet1b
+      SecurityGroups:
+        - !Ref ALBSecurityGroup
+      LoadBalancerAttributes:
+        - Key: idle_timeout.timeout_seconds
+          Value: '60'
+      Name: my-vpc-application-load-balancer
+      Scheme: internet-facing
+      Type: application
+      Tags:
+        - Key: Name
+          Value:
+            Fn::Join:
+              - ''
+              - - !Ref EnvironmentName
+                - '-vpc-application-load-balancer-'
+                - Ref: "AWS::Region"
+  BastionHostSecurityGroup1a:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: "Bastion1a"
+      GroupDescription: The security group for bastion host and enable SSH to it
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value:
+            Fn::Join:
+              - ''
+              - - !Ref EnvironmentName
+                - '-vpc-bastion-security-group-availability-zone-1a'
+                - Ref: "AWS::Region"
+  BastionHostSecurityGroup1b:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: "Bastion1b"
+      GroupDescription: The security group for bastion host and enable SSH to it
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 2222
+          ToPort: 2222
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value:
+            Fn::Join:
+              - ''
+              - - !Ref EnvironmentName
+                - '-vpc-bastion-security-group-availability-zone-1b'
+                - Ref: "AWS::Region"
+  WebserverSecurityGroup1a:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: "Web server 1a"
+      GroupDescription: The security group for web server and enable HTTP access to it
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          SourceSecurityGroupId: !Ref BastionHostSecurityGroup1a
+      Tags:
+        - Key: Name
+          Value:
+            Fn::Join:
+              - ''
+              - - !Ref EnvironmentName
+                - '-vpc-web-server-security-group-availability-zone-1a-'
+                - Ref: "AWS::Region"
+  WebserverSecurityGroup1b:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: "Web server 1b"
+      GroupDescription: The security group for web server and enable HTTP access to it
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          SourceSecurityGroupId: !Ref BastionHostSecurityGroup1b
+      Tags:
+        - Key: Name
+          Value:
+            Fn::Join:
+              - ''
+              - - !Ref EnvironmentName
+                - '-vpc-web-server-security-group-availability-zone-1b-'
+                - Ref: "AWS::Region"
+Outputs:
+  BastionHostSecurityGroup1a:
+    Value: !Ref BastionHostSecurityGroup1a
+    Export:
+      Name: !Sub "BastionHostSecurityGroup1a"
+  BastionHostSecurityGroup1b:
+    Value: !Ref BastionHostSecurityGroup1b
+    Export:
+      Name: !Sub "BastionHostSecurityGroup1b"
+  PublicSubnet1a:
+    Value: !Ref PublicSubnet1a
+    Export:
+      Name: !Sub "PublicSubnet1a"
+  PublicSubnet1b:
+    Value: !Ref PublicSubnet1b
+    Export:
+      Name: !Sub "PublicSubnet1b"
+  ElasticIP1a:
+    Value: !Ref ElasticIP1a
+    Export:
+      Name: !Sub "ElasticIP1a"
+  ElasticIP1aAllocationId:
+    Value: !GetAtt ElasticIP1a.AllocationId
+    Export:
+      Name: !Sub "ElasticIP1aAllocationId"
+  ElasticIP1b:
+    Value: !Ref ElasticIP1b
+    Export:
+      Name: !Sub "ElasticIP1b"
+  ElasticIP1bAllocationId:
+    Value: !GetAtt ElasticIP1b.AllocationId
+    Export:
+      Name: !Sub "ElasticIP1bAllocationId"

@@ -1,10 +1,10 @@
 [
   {
-    "ParameterKey": "myVpc",
-    "ParameterValue": "vpc-0e34785bb4ea2396b"
+    "ParameterKey": "EnvironmentName",
+    "ParameterValue": "UdacityNetwork"
   },
   {
-    "ParameterKey": "PublicSubnet1",
-    "ParameterValue": "subnet-00e0cb324cf25d907"
+    "ParameterKey": "AdministratorManagedPolicy",
+    "ParameterValue": "arn:aws:iam::aws:policy/AdministratorAccess"
   }
 ]
