@@ -315,6 +315,7 @@ Resources:
       Name: my-vpc-application-load-balancer
       Scheme: internet-facing
       Type: application
+      IpAddressType: "ipv4"
       Tags:
         - Key: Name
           Value:
