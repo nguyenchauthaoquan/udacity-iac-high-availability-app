@@ -308,91 +308,7 @@ Resources:
               - - !Ref EnvironmentName
                 - '-vpc-application-load-balancer-'
                 - Ref: "AWS::Region"
-  BastionHostSecurityGroup1a:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      GroupName: "Bastion1a"
-      GroupDescription: The security group for bastion host and enable SSH to it
-      VpcId: !Ref VPC
-      SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 22
-          ToPort: 22
-          CidrIp: 0.0.0.0/0
-      Tags:
-        - Key: Name
-          Value:
-            Fn::Join:
-              - ''
-              - - !Ref EnvironmentName
-                - '-vpc-bastion-security-group-availability-zone-1a'
-                - Ref: "AWS::Region"
-  BastionHostSecurityGroup1b:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      GroupName: "Bastion1b"
-      GroupDescription: The security group for bastion host and enable SSH to it
-      VpcId: !Ref VPC
-      SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 2222
-          ToPort: 2222
-          CidrIp: 0.0.0.0/0
-      Tags:
-        - Key: Name
-          Value:
-            Fn::Join:
-              - ''
-              - - !Ref EnvironmentName
-                - '-vpc-bastion-security-group-availability-zone-1b'
-                - Ref: "AWS::Region"
-  WebserverSecurityGroup1a:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      GroupName: "Web server 1a"
-      GroupDescription: The security group for web server and enable HTTP access to it
-      VpcId: !Ref VPC
-      SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 80
-          ToPort: 80
-          SourceSecurityGroupId: !Ref BastionHostSecurityGroup1a
-      Tags:
-        - Key: Name
-          Value:
-            Fn::Join:
-              - ''
-              - - !Ref EnvironmentName
-                - '-vpc-web-server-security-group-availability-zone-1a-'
-                - Ref: "AWS::Region"
-  WebserverSecurityGroup1b:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      GroupName: "Web server 1b"
-      GroupDescription: The security group for web server and enable HTTP access to it
-      VpcId: !Ref VPC
-      SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 8080
-          ToPort: 8080
-          SourceSecurityGroupId: !Ref BastionHostSecurityGroup1b
-      Tags:
-        - Key: Name
-          Value:
-            Fn::Join:
-              - ''
-              - - !Ref EnvironmentName
-                - '-vpc-web-server-security-group-availability-zone-1b-'
-                - Ref: "AWS::Region"
 Outputs:
-  BastionHostSecurityGroup1a:
-    Value: !Ref BastionHostSecurityGroup1a
-    Export:
-      Name: !Sub "BastionHostSecurityGroup1a"
-  BastionHostSecurityGroup1b:
-    Value: !Ref BastionHostSecurityGroup1b
-    Export:
-      Name: !Sub "BastionHostSecurityGroup1b"
   PublicSubnet1a:
     Value: !Ref PublicSubnet1a
     Export:
@@ -401,6 +317,18 @@ Outputs:
     Value: !Ref PublicSubnet1b
     Export:
       Name: !Sub "PublicSubnet1b"
+  PrivateSubnet1a:
+    Value: !Ref PrivateSubnet1a
+    Export:
+      Name: !Sub "PrivateSubnet1a"
+  PrivateSubnet1b:
+    Value: !Ref PrivateSubnet1b
+    Export:
+      Name: !Sub "PrivateSubnet1b"
+  ALBTargetGroup:
+    Value: !Ref ALBTargetGroup
+    Export:
+      Name: !Sub "ALBTargetGroup"
   VPC:
     Value: !Ref VPC
     Export:

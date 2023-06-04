@@ -9,6 +9,7 @@ Parameters:
     Description: "The AWS Managed Policy for the EC2 Instance Role"
     Type: String
 Resources:
+  # ------------ Bastion ------------------------
   BastionIamRole:
     Type: AWS::IAM::Role
     Properties:
@@ -33,14 +34,6 @@ Resources:
             - Effect: Allow
               Action:
                 - 's3:*'
-                - "ec2:DescribeAddresses"
-                - "ec2:AllocateAddress"
-                - "ec2:DescribeInstances"
-                - "ec2:AssociateAddress"
-                - "ec2:ReleaseAddress"
-                - "ec2:DescribeAvailabilityZones"
-                - "ec2:describeCoipPools"
-                - "ec2:describePublicIpv4Pools"
               Resource: '*'
         Roles:
           - !Ref BastionIamRole
@@ -51,6 +44,46 @@ Resources:
         Path: '/'
         Roles:
           - !Ref BastionIamRole
+  BastionHostSecurityGroup1a:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: "Bastion1a"
+      GroupDescription: The security group for bastion host and enable SSH to it
+      VpcId:
+        Fn::ImportValue: !Sub "VPC"
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value:
+            Fn::Join:
+              - ''
+              - - !Ref EnvironmentName
+                - '-vpc-bastion-security-group-availability-zone-1a'
+                - Ref: "AWS::Region"
+  BastionHostSecurityGroup1b:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: "Bastion1b"
+      GroupDescription: The security group for bastion host and enable SSH to it
+      VpcId:
+        Fn::ImportValue: !Sub "VPC"
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 2222
+          ToPort: 2222
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value:
+            Fn::Join:
+              - ''
+              - - !Ref EnvironmentName
+                - '-vpc-bastion-security-group-availability-zone-1b'
+                - Ref: "AWS::Region"
   BastionKeyPair1a:
     Type: AWS::EC2::KeyPair
     Properties:
@@ -67,23 +100,33 @@ Resources:
           Value: !Sub "${AWS::StackName}-bastion-key-1b"
   BastionHost1a:
     Type: AWS::EC2::Instance
+    DependsOn:
+      - BastionHostSecurityGroup1a
+      - BastionIamInstanceProfile
     Properties:
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          chmod 400 ${BastionKeyPair1a}.pem
       InstanceType: t3.small
       IamInstanceProfile: !Ref BastionIamInstanceProfile
       ImageId: ami-0715c1897453cabd1
       SecurityGroupIds:
-        - Fn::ImportValue: !Sub "BastionHostSecurityGroup1a"
+        - Ref: BastionHostSecurityGroup1a
       SubnetId:
         Fn::ImportValue: !Sub "PublicSubnet1a"
       KeyName: !Ref BastionKeyPair1a
   BastionHost1b:
     Type: AWS::EC2::Instance
+    DependsOn:
+      - BastionHostSecurityGroup1b
+      - BastionIamInstanceProfile
     Properties:
       InstanceType: t3.small
       IamInstanceProfile: !Ref BastionIamInstanceProfile
       ImageId: ami-0715c1897453cabd1
       SecurityGroupIds:
-        - Fn::ImportValue: !Sub "BastionHostSecurityGroup1b"
+        - Ref: BastionHostSecurityGroup1b
       SubnetId:
         Fn::ImportValue: !Sub "PublicSubnet1b"
       KeyName: !Ref BastionKeyPair1b
@@ -109,3 +152,92 @@ Resources:
       InstanceId:
         Ref: BastionHost1b
       AllocationId: !GetAtt BastionEIP1b.AllocationId
+  # ------------ Web server ------------------------
+  WebServerIAMRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - "ec2.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      Path: "/"
+  WebServerProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: "/"
+      Roles:
+        - !Ref WebServerIAMRole
+  LaunchConfiguration:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      ImageId: ami-0715c1897453cabd1
+      InstanceType: t3.small
+      IamInstanceProfile: !Ref WebServerProfile
+      KeyName: !Ref BastionKeyPair1b
+      SecurityGroups:
+        - !Ref WebserverSecurityGroup1a
+        - !Ref WebserverSecurityGroup1b
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          echo "it works! Udagram, Udacity" > index.html
+          nohup python -m SimpleHTTPServer 80 &
+          nohup python -m SimpleHTTPServer 8080 &
+  AutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      LaunchConfigurationName: !Ref LaunchConfiguration
+      MinSize: 2
+      MaxSize: 4
+      TargetGroupARNs:
+        - Fn::ImportValue: !Sub "ALBTargetGroup"
+      VPCZoneIdentifier:
+        - Fn::ImportValue: !Sub "PrivateSubnet1a"
+        - Fn::ImportValue: !Sub "PrivateSubnet1b"
+  WebserverSecurityGroup1a:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: "Web server 1a"
+      GroupDescription: The security group for web server and enable HTTP access to it
+      VpcId:
+        Fn::ImportValue: !Sub "VPC"
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          SourceSecurityGroupId: !Ref BastionHostSecurityGroup1a
+      Tags:
+        - Key: Name
+          Value:
+            Fn::Join:
+              - ''
+              - - !Ref EnvironmentName
+                - '-vpc-web-server-security-group-availability-zone-1a-'
+                - Ref: "AWS::Region"
+  WebserverSecurityGroup1b:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: "Web server 1b"
+      GroupDescription: The security group for web server and enable HTTP access to it
+      VpcId:
+        Fn::ImportValue: !Sub "VPC"
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          SourceSecurityGroupId: !Ref BastionHostSecurityGroup1b
+      Tags:
+        - Key: Name
+          Value:
+            Fn::Join:
+              - ''
+              - - !Ref EnvironmentName
+                - '-vpc-web-server-security-group-availability-zone-1b-'
+                - Ref: "AWS::Region"
