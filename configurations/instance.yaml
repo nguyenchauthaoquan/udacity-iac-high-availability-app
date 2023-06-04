@@ -51,11 +51,16 @@ Resources:
       GroupDescription: The security group for bastion host and enable SSH to it
       VpcId:
         Fn::ImportValue: !Sub "VPC"
+      SecurityGroupEgress:
+        - IpProtocol: '-1'
+          FromPort: -1
+          ToPort: -1
+          CidrIp: 0.0.0.0/0
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 22
           ToPort: 22
-          CidrIp: 0.0.0.0/0
+          CidrIp: 42.118.70.121/32
       Tags:
         - Key: Name
           Value:
@@ -71,11 +76,16 @@ Resources:
       GroupDescription: The security group for bastion host and enable SSH to it
       VpcId:
         Fn::ImportValue: !Sub "VPC"
+      SecurityGroupEgress:
+        - IpProtocol: '-1'
+          FromPort: -1
+          ToPort: -1
+          CidrIp: 0.0.0.0/0
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 2222
           ToPort: 2222
-          CidrIp: 0.0.0.0/0
+          CidrIp: 85.221.159.72/32
       Tags:
         - Key: Name
           Value:
@@ -213,7 +223,7 @@ Resources:
         LaunchTemplateId: !Ref WebServerLaunchTemplate
         Version: !GetAtt WebServerLaunchTemplate.LatestVersionNumber
       MinSize: 2
-      MaxSize: 4
+      MaxSize: 6
       TargetGroupARNs:
         - Fn::ImportValue: !Sub "ALBTargetGroup"
       VPCZoneIdentifier:
@@ -226,10 +236,19 @@ Resources:
       GroupDescription: The security group for web server and enable HTTP access to it
       VpcId:
         Fn::ImportValue: !Sub "VPC"
+      SecurityGroupEgress:
+        - IpProtocol: '-1'
+          FromPort: -1
+          ToPort: -1
+          CidrIp: 0.0.0.0/0
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 80
           ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 2222
+          ToPort: 2222
           SourceSecurityGroupId: !Ref BastionHostSecurityGroup1a
       Tags:
         - Key: Name
@@ -250,6 +269,10 @@ Resources:
         - IpProtocol: tcp
           FromPort: 8080
           ToPort: 8080
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 2222
+          ToPort: 2222
           SourceSecurityGroupId: !Ref BastionHostSecurityGroup1b
       Tags:
         - Key: Name
