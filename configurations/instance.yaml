@@ -174,26 +174,48 @@ Resources:
       Path: "/"
       Roles:
         - !Ref WebServerIAMRole
-  LaunchConfiguration:
-    Type: AWS::AutoScaling::LaunchConfiguration
+  WebServerKeyPair:
+    Type: AWS::EC2::KeyPair
     Properties:
-      ImageId: ami-0715c1897453cabd1
-      InstanceType: t3.small
-      IamInstanceProfile: !Ref WebServerProfile
-      KeyName: !Ref BastionKeyPair1b
-      SecurityGroups:
-        - !Ref WebserverSecurityGroup1a
-        - !Ref WebserverSecurityGroup1b
-      UserData:
-        Fn::Base64: !Sub |
-          #!/bin/bash
-          echo "it works! Udagram, Udacity" > index.html
-          nohup python -m SimpleHTTPServer 80 &
-          nohup python -m SimpleHTTPServer 8080 &
+      KeyName: !Sub "${AWS::StackName}-web-server"
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-web-server"
+  WebServerLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateData:
+        ImageId: ami-0715c1897453cabd1
+        KeyName: !Ref WebServerKeyPair
+        InstanceType: t3.small
+        BlockDeviceMappings:
+          - DeviceName: "/dev/sdk"
+            Ebs:
+              VolumeSize: "10"
+        SecurityGroupIds:
+          - Ref: WebserverSecurityGroup1a
+          - Ref: WebserverSecurityGroup1b
+        UserData:
+          Fn::Base64: |
+            #!/bin/bash
+            apt-get update -y
+            apt-get install apache2 -y
+            systemctl start apache2.service
+            cd /var/www/html
+            echo "Udacity Demo Web Server Up and Running!" > index.html
+            systemctl restart apache2.service
+      LaunchTemplateName:
+        Fn::Join:
+          - ""
+          - - !Ref EnvironmentName
+            - "-web-server-launch-template-"
+            - Ref: "AWS::Region"
   AutoScalingGroup:
     Type: AWS::AutoScaling::AutoScalingGroup
     Properties:
-      LaunchConfigurationName: !Ref LaunchConfiguration
+      LaunchTemplate:
+        LaunchTemplateId: !Ref WebServerLaunchTemplate
+        Version: !GetAtt WebServerLaunchTemplate.LatestVersionNumber
       MinSize: 2
       MaxSize: 4
       TargetGroupARNs:
