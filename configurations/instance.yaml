@@ -198,12 +198,8 @@ Resources:
         UserData:
           Fn::Base64: |
             #!/bin/bash
-            apt-get update -y
-            apt-get install apache2 -y
-            systemctl start apache2.service
-            cd /var/www/html
-            echo "Udacity Demo Web Server Up and Running!" > index.html
-            systemctl restart apache2.service
+            echo "Hello, World!" > index.html
+            nohup python -m SimpleHTTPServer 80 &
       LaunchTemplateName:
         Fn::Join:
           - ""
