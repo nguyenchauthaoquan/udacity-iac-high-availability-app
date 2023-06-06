@@ -31,6 +31,7 @@ Resources:
     Properties:
       CidrBlock: !Ref VpcCIDR
       EnableDnsHostnames: true
+      EnableDnsSupport: true
       Tags:
         - Key: Name
           Value:
@@ -71,6 +72,8 @@ Resources:
                 - Ref: "AWS::Region"
   DefaultPublicRoute:
     Type: AWS::EC2::Route
+    DependsOn:
+      - InternetGatewayAttachment
     Properties:
       RouteTableId: !Ref PublicRouteTable
       DestinationCidrBlock: 0.0.0.0/0
@@ -143,7 +146,7 @@ Resources:
     Type: AWS::EC2::EIP
     DependsOn: InternetGatewayAttachment
     Properties:
-      Domain: VPC
+      Domain: vpc
       Tags:
         - Key: Name
           Value:
@@ -156,7 +159,7 @@ Resources:
     Type: AWS::EC2::EIP
     DependsOn: InternetGatewayAttachment
     Properties:
-      Domain: VPC
+      Domain: vpc
       Tags:
         - Key: Name
           Value:
@@ -250,105 +253,44 @@ Resources:
     Properties:
       RouteTableId: !Ref PrivateRouteTable1b
       SubnetId: !Ref PrivateSubnet1b
-  ALBSecurityGroup:
-    Type: "AWS::EC2::SecurityGroup"
-    Properties:
-      GroupDescription: Allow HTTP traffic to ALB
-      VpcId: !Ref VPC
-      SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 80
-          ToPort: 80
-          CidrIp: 0.0.0.0/0
-      SecurityGroupEgress:
-        - IpProtocol: TCP
-          FromPort: 80
-          ToPort: 80
-          CidrIp: 0.0.0.0/0
-  ALBTargetGroup:
-    Type: AWS::ElasticLoadBalancingV2::TargetGroup
-    Properties:
-      VpcId: !Ref VPC
-      Protocol: HTTP
-      Port: 80
-      HealthCheckIntervalSeconds: 30
-      HealthCheckPath: /
-      HealthCheckProtocol: HTTP
-      HealthCheckTimeoutSeconds: 8
-      HealthyThresholdCount: 2
-      UnhealthyThresholdCount: 5
-      TargetType: "instance"
-  ALBListener:
-    Type: "AWS::ElasticLoadBalancingV2::Listener"
-    Properties:
-      LoadBalancerArn: !Ref ApplicationLoadBalancer
-      Protocol: HTTP
-      Port: 80
-      DefaultActions:
-        - Type: forward
-          TargetGroupArn: !Ref ALBTargetGroup
-  ALBListenerRule:
-    Type: AWS::ElasticLoadBalancingV2::ListenerRule
-    Properties:
-      Actions:
-        - Type: forward
-          TargetGroupArn:
-            Ref: "ALBTargetGroup"
-      Conditions:
-        - Field: path-pattern
-          Values: [ / ]
-      ListenerArn:
-          Ref: "ALBListener"
-      Priority: 1
-
-  ApplicationLoadBalancer:
-    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
-    Properties:
-      Subnets:
-        - !Ref PublicSubnet1a
-        - !Ref PublicSubnet1b
-      SecurityGroups:
-        - !Ref ALBSecurityGroup
-      LoadBalancerAttributes:
-        - Key: idle_timeout.timeout_seconds
-          Value: '60'
-      Name: my-vpc-application-load-balancer
-      Scheme: internet-facing
-      Type: application
-      IpAddressType: "ipv4"
-      Tags:
-        - Key: Name
-          Value:
-            Fn::Join:
-              - ''
-              - - !Ref EnvironmentName
-                - '-vpc-application-load-balancer-'
-                - Ref: "AWS::Region"
 Outputs:
-  PublicSubnet1a:
-    Value: !Ref PublicSubnet1a
+  VPC:
+    Description: The exported VPC
+    Value: !Ref VPC
     Export:
-      Name: !Sub "PublicSubnet1a"
-  PublicSubnet1b:
-    Value: !Ref PublicSubnet1b
+      Name: !Sub "VPC"
+  PublicRouteTable:
+    Description: The exported Public Route Table
+    Value: !Ref PublicRouteTable
     Export:
-      Name: !Sub "PublicSubnet1b"
+      Name: !Sub "PublicRouteTable"
+  PrivateRouteTable1a:
+    Description: The exported private route table in AZ1a
+    Value: !Ref PrivateRouteTable1a
+    Export:
+      Name: !Sub "PrivateRouteTable1a"
+  PrivateRouteTable1b:
+    Description: The exported private route table in AZ1b
+    Value: !Ref PrivateRouteTable1b
+    Export:
+      Name: !Sub "PrivateRouteTable1b"
   PrivateSubnet1a:
+    Description: The exported single private subnet in AZ1a
     Value: !Ref PrivateSubnet1a
     Export:
       Name: !Sub "PrivateSubnet1a"
   PrivateSubnet1b:
+    Description: The exported single private subnet in AZ1b
     Value: !Ref PrivateSubnet1b
     Export:
       Name: !Sub "PrivateSubnet1b"
-  ALBTargetGroup:
-    Value: !Ref ALBTargetGroup
+  PublicSubnet1a:
+    Description: The exported public subnet in AZ1a
+    Value: !Ref PublicSubnet1a
     Export:
-      Name: !Sub "ALBTargetGroup"
-  VPC:
-    Value: !Ref VPC
+      Name: !Sub "PublicSubnet1a"
+  PublicSubnet1b:
+    Description: The exported public subnet in AZ1b
+    Value: !Ref PublicSubnet1b
     Export:
-      Name: !Sub "VPC"
-  Website:
-    Description: The Public DNS for the EC2 Instance
-    Value: !Join [ '', [ 'http://', !GetAtt [ ApplicationLoadBalancer, DNSName ] ] ]
+      Name: !Sub "PublicSubnet1b"

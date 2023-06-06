@@ -1,1 +1,1 @@
-aws cloudformation delete-stack --stack-name instance-stack --region us-east-1
+aws cloudformation delete-stack --stack-name instance-stack --region us-west-2

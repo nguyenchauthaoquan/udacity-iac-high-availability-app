@@ -1,6 +1,6 @@
 aws cloudformation update-stack  \
 --stack-name instance-stack \
---region us-east-1 \
+--region us-west-2 \
 --template-body file://instance.yaml \
 --parameters file://parameters/instances.json \
---capabilities CAPABILITY_NAMED_IAM
+--capabilities "CAPABILITY_NAMED_IAM"

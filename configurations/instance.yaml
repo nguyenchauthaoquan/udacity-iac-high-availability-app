@@ -5,164 +5,11 @@ Parameters:
     Description: An environment name for VPC network configuration
     Type: String
     Default: UdacityHighAvailabilityApp
-  AdministratorManagedPolicy:
-    Description: "The AWS Managed Policy for the EC2 Instance Role"
-    Type: String
 Resources:
-  # ------------ Bastion ------------------------
-  BastionIamRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service:
-                - ec2.amazonaws.com
-            Action:
-              - sts:AssumeRole
-      Path: '/'
+  # ------------ Bastion ------------------------------------------
 
-  BastionIamPolicies:
-      Type: AWS::IAM::Policy
-      Properties:
-        PolicyName: fullAccess
-        PolicyDocument:
-          Version: '2012-10-17'
-          Statement:
-            - Effect: Allow
-              Action:
-                - 's3:*'
-              Resource: '*'
-        Roles:
-          - !Ref BastionIamRole
 
-  BastionIamInstanceProfile:
-      Type: AWS::IAM::InstanceProfile
-      Properties:
-        Path: '/'
-        Roles:
-          - !Ref BastionIamRole
-  BastionHostSecurityGroup1a:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      GroupName: "Bastion1a"
-      GroupDescription: The security group for bastion host and enable SSH to it
-      VpcId:
-        Fn::ImportValue: !Sub "VPC"
-      SecurityGroupEgress:
-        - IpProtocol: '-1'
-          FromPort: -1
-          ToPort: -1
-          CidrIp: 0.0.0.0/0
-      SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 22
-          ToPort: 22
-          CidrIp: 42.118.70.121/32
-      Tags:
-        - Key: Name
-          Value:
-            Fn::Join:
-              - ''
-              - - !Ref EnvironmentName
-                - '-vpc-bastion-security-group-availability-zone-1a'
-                - Ref: "AWS::Region"
-  BastionHostSecurityGroup1b:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      GroupName: "Bastion1b"
-      GroupDescription: The security group for bastion host and enable SSH to it
-      VpcId:
-        Fn::ImportValue: !Sub "VPC"
-      SecurityGroupEgress:
-        - IpProtocol: '-1'
-          FromPort: -1
-          ToPort: -1
-          CidrIp: 0.0.0.0/0
-      SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 2222
-          ToPort: 2222
-          CidrIp: 85.221.159.72/32
-      Tags:
-        - Key: Name
-          Value:
-            Fn::Join:
-              - ''
-              - - !Ref EnvironmentName
-                - '-vpc-bastion-security-group-availability-zone-1b'
-                - Ref: "AWS::Region"
-  BastionKeyPair1a:
-    Type: AWS::EC2::KeyPair
-    Properties:
-      KeyName: !Sub "${AWS::StackName}-bastion-key-1a"
-      Tags:
-        - Key: Name
-          Value: !Sub "${AWS::StackName}-bastion-key-1a"
-  BastionKeyPair1b:
-    Type: AWS::EC2::KeyPair
-    Properties:
-      KeyName: !Sub "${AWS::StackName}-bastion-key-1b"
-      Tags:
-        - Key: Name
-          Value: !Sub "${AWS::StackName}-bastion-key-1b"
-  BastionHost1a:
-    Type: AWS::EC2::Instance
-    DependsOn:
-      - BastionHostSecurityGroup1a
-      - BastionIamInstanceProfile
-    Properties:
-      UserData:
-        Fn::Base64: !Sub |
-          #!/bin/bash
-          chmod 400 ${BastionKeyPair1a}.pem
-      InstanceType: t3.small
-      IamInstanceProfile: !Ref BastionIamInstanceProfile
-      ImageId: ami-0715c1897453cabd1
-      SecurityGroupIds:
-        - Ref: BastionHostSecurityGroup1a
-      SubnetId:
-        Fn::ImportValue: !Sub "PublicSubnet1a"
-      KeyName: !Ref BastionKeyPair1a
-  BastionHost1b:
-    Type: AWS::EC2::Instance
-    DependsOn:
-      - BastionHostSecurityGroup1b
-      - BastionIamInstanceProfile
-    Properties:
-      InstanceType: t3.small
-      IamInstanceProfile: !Ref BastionIamInstanceProfile
-      ImageId: ami-0715c1897453cabd1
-      SecurityGroupIds:
-        - Ref: BastionHostSecurityGroup1b
-      SubnetId:
-        Fn::ImportValue: !Sub "PublicSubnet1b"
-      KeyName: !Ref BastionKeyPair1b
-  BastionEIP1a:
-    Type: AWS::EC2::EIP
-    Properties:
-      Domain:
-        Fn::ImportValue: !Sub "VPC"
-  BastionEIPAssociation1a:
-    Type: AWS::EC2::EIPAssociation
-    Properties:
-      InstanceId:
-        Ref: BastionHost1a
-      AllocationId: !GetAtt BastionEIP1a.AllocationId
-  BastionEIP1b:
-    Type: AWS::EC2::EIP
-    Properties:
-      Domain:
-        Fn::ImportValue: !Sub "VPC"
-  BastionEIPAssociation1b:
-    Type: AWS::EC2::EIPAssociation
-    Properties:
-      InstanceId:
-        Ref: BastionHost1b
-      AllocationId: !GetAtt BastionEIP1b.AllocationId
-  # ------------ Web server ------------------------
+  # ------------ Web server ---------------------------------------
   WebServerIAMRole:
     Type: AWS::IAM::Role
     Properties:
@@ -178,107 +25,161 @@ Resources:
             Action:
               - "sts:AssumeRole"
       Path: "/"
-  WebServerProfile:
+  WebServerInstanceProfile:
     Type: AWS::IAM::InstanceProfile
     Properties:
       Path: "/"
       Roles:
         - !Ref WebServerIAMRole
-  WebServerKeyPair:
-    Type: AWS::EC2::KeyPair
+  WebServerTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
-      KeyName: !Sub "${AWS::StackName}-web-server"
-      Tags:
-        - Key: Name
-          Value: !Sub "${AWS::StackName}-web-server"
+      HealthCheckIntervalSeconds: 10
+      HealthCheckPath: /
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 7
+      HealthyThresholdCount: 2
+      TargetType: "instance"
+      Port: 80
+      Protocol: HTTP
+      UnhealthyThresholdCount: 5
+      VpcId:
+        Fn::ImportValue: !Sub "VPC"
+  WebServerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: "Web server security group"
+      GroupDescription: "Allow HTTP and SSH for web server via security group"
+      VpcId:
+        Fn::ImportValue: !Sub "VPC"
+  WebServerOutboundRuleALL:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId:
+        Ref: "WebServerSecurityGroup"
+      IpProtocol: "-1"
+      FromPort: -1
+      ToPort: -1
+      CidrIp: "0.0.0.0/0"
+      Description: "Allow outbound traffic by default"
+
+  WebServerInboundRuleHTTP:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId:
+        Ref: "WebServerSecurityGroup"
+      IpProtocol: "tcp"
+      FromPort: 80
+      ToPort: 80
+      CidrIp: "0.0.0.0/0"
+      Description: "Allow inbound to the default HTTP port: 80 for load balancer health check"
+
   WebServerLaunchTemplate:
     Type: AWS::EC2::LaunchTemplate
     Properties:
       LaunchTemplateData:
-        ImageId: ami-0715c1897453cabd1
-        KeyName: !Ref WebServerKeyPair
-        InstanceType: t3.small
-        BlockDeviceMappings:
-          - DeviceName: "/dev/sdk"
-            Ebs:
-              VolumeSize: "10"
-        SecurityGroupIds:
-          - Ref: WebserverSecurityGroup1a
-          - Ref: WebserverSecurityGroup1b
         UserData:
           Fn::Base64: |
             #!/bin/bash
-            echo "Hello, World!" > index.html
-            nohup python -m SimpleHTTPServer 80 &
+            apt-get update -y
+            apt-get install apache2 -y
+            systemctl start apache2.service
+            cd /var/www/html
+            echo "Udacity Demo Web Server Up and Running!" > index.html
+        ImageId: ami-0ab193018f3e9351b
+        KeyName: WebServerKeyPair
+        IamInstanceProfile:
+          Arn: !GetAtt
+            - WebServerInstanceProfile
+            - Arn
+        BlockDeviceMappings:
+          - DeviceName: '/dev/sdk'
+            Ebs:
+              VolumeSize: '10'
+              DeleteOnTermination: true
+              VolumeType: 'gp2'
+        InstanceType: t3.small
+        SecurityGroupIds:
+          - Ref: 'WebServerSecurityGroup'
       LaunchTemplateName:
         Fn::Join:
           - ""
           - - !Ref EnvironmentName
             - "-web-server-launch-template-"
             - Ref: "AWS::Region"
-  AutoScalingGroup:
+  WebServersAutoScalingGroup:
     Type: AWS::AutoScaling::AutoScalingGroup
     Properties:
-      LaunchTemplate:
-        LaunchTemplateId: !Ref WebServerLaunchTemplate
-        Version: !GetAtt WebServerLaunchTemplate.LatestVersionNumber
       MinSize: 2
       MaxSize: 6
-      TargetGroupARNs:
-        - Fn::ImportValue: !Sub "ALBTargetGroup"
+      DesiredCapacity: 3
       VPCZoneIdentifier:
         - Fn::ImportValue: !Sub "PrivateSubnet1a"
         - Fn::ImportValue: !Sub "PrivateSubnet1b"
-  WebserverSecurityGroup1a:
+      LaunchTemplate:
+        LaunchTemplateId:
+          Ref: "WebServerLaunchTemplate"
+        Version:
+          Fn::GetAtt: "WebServerLaunchTemplate.LatestVersionNumber"
+      TargetGroupARNs:
+        - Ref: "WebServerTargetGroup"
+
+  # ------------ Application Load Balancer ------------------------
+  ALBSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupName: "Web server 1a"
-      GroupDescription: The security group for web server and enable HTTP access to it
+      GroupName: "Application Load Balancer Security Group"
+      GroupDescription: "LB Security Group for application"
       VpcId:
         Fn::ImportValue: !Sub "VPC"
-      SecurityGroupEgress:
-        - IpProtocol: '-1'
-          FromPort: -1
-          ToPort: -1
-          CidrIp: 0.0.0.0/0
-      SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 80
-          ToPort: 80
-          CidrIp: 0.0.0.0/0
-        - IpProtocol: tcp
-          FromPort: 2222
-          ToPort: 2222
-          SourceSecurityGroupId: !Ref BastionHostSecurityGroup1a
-      Tags:
-        - Key: Name
-          Value:
-            Fn::Join:
-              - ''
-              - - !Ref EnvironmentName
-                - '-vpc-web-server-security-group-availability-zone-1a-'
-                - Ref: "AWS::Region"
-  WebserverSecurityGroup1b:
-    Type: AWS::EC2::SecurityGroup
+  LoadBalancerOutboundRuleHTTP:
+    Type: AWS::EC2::SecurityGroupEgress
     Properties:
-      GroupName: "Web server 1b"
-      GroupDescription: The security group for web server and enable HTTP access to it
-      VpcId:
-        Fn::ImportValue: !Sub "VPC"
-      SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 8080
-          ToPort: 8080
-          CidrIp: 0.0.0.0/0
-        - IpProtocol: tcp
-          FromPort: 2222
-          ToPort: 2222
-          SourceSecurityGroupId: !Ref BastionHostSecurityGroup1b
-      Tags:
-        - Key: Name
-          Value:
-            Fn::Join:
-              - ''
-              - - !Ref EnvironmentName
-                - '-vpc-web-server-security-group-availability-zone-1b-'
-                - Ref: "AWS::Region"
+      GroupId:
+        Ref: "ALBSecurityGroup"
+      IpProtocol: "tcp"
+      FromPort: 80
+      ToPort: 80
+      CidrIp: "0.0.0.0/0"
+      Description: "Allow all egress traffic by default"
+
+  LoadBalancerInboundRuleHTTP:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId:
+        Ref: "ALBSecurityGroup"
+      IpProtocol: "tcp"
+      FromPort: 80
+      ToPort: 80
+      CidrIp: "0.0.0.0/0"
+      Description: "Allow ingress to the default HTTP port: 80 for load balancer health check"
+
+  ApplicationLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Subnets:
+        - Fn::ImportValue: !Sub "PublicSubnet1a"
+        - Fn::ImportValue: !Sub "PublicSubnet1b"
+      SecurityGroups:
+        - Ref: "ALBSecurityGroup"
+  ALBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref WebServerTargetGroup
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 80
+      Protocol: HTTP
+  ALBListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref WebServerTargetGroup
+      Conditions:
+        - Field: path-pattern
+          Values: [ / ]
+      ListenerArn: !Ref ALBListener
+      Priority: 1
+
