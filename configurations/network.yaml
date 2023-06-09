@@ -58,7 +58,7 @@ Resources:
         VpcId: !Ref VPC
   # ---------- Routing for public routes ---------
   # ---------- Public Route Table ----------------
-  PublicRouteTable:
+  PublicRouteTable1a:
     Type: AWS::EC2::RouteTable
     Properties:
       VpcId: !Ref VPC
@@ -174,6 +174,7 @@ Resources:
     Properties:
       AllocationId: !GetAtt ElasticIP1a.AllocationId
       SubnetId: !Ref PublicSubnet1a
+      ConnectivityType: "public"
       Tags:
         - Key: Name
           Value:
@@ -187,6 +188,7 @@ Resources:
     Properties:
       AllocationId: !GetAtt ElasticIP1b.AllocationId
       SubnetId: !Ref PublicSubnet1b
+      ConnectivityType: "public"
       Tags:
         - Key: Name
           Value:
@@ -253,6 +255,97 @@ Resources:
     Properties:
       RouteTableId: !Ref PrivateRouteTable1b
       SubnetId: !Ref PrivateSubnet1b
+  # ------------ Application Load Balancer ------------------------
+  ALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: "ALB Security Group"
+      GroupDescription: "ALB Security Group for HTTP traffic application"
+      VpcId: !Ref VPC
+      # Outbound
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+      # Inbound
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value:
+            Fn::Join:
+              - ''
+              - - !Ref EnvironmentName
+                - '-alb-security-group-'
+                - Ref: "AWS::Region"
+  ApplicationLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Scheme: "internet-facing"
+      Type: "application"
+      IpAddressType: "ipv4"
+      Subnets:
+        - !Ref PublicSubnet1a
+        - !Ref PublicSubnet1b
+      SecurityGroups:
+        - Ref: ALBSecurityGroup
+  ALBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref ALBTargetGroup
+  ALBListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref ALBTargetGroup
+      Conditions:
+        - Field: path-pattern
+          Values: [ / ]
+      ListenerArn: !Ref ALBListener
+      Priority: 1
+  ALBTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 10
+      HealthCheckPath: /
+      HealthCheckProtocol: HTTP
+      HealthCheckPort: "traffic-port"
+      HealthCheckEnabled: true
+      TargetType: "instance"
+      HealthCheckTimeoutSeconds: 8
+      HealthyThresholdCount: 2
+      Port: 80
+      Protocol: HTTP
+      UnhealthyThresholdCount: 5
+      VpcId: !Ref VPC
+  # ------------ Web server networks ------------------------
+  WebServerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: "Web Server Security Group"
+      GroupDescription: "Web server Security Group for HTTP traffic application"
+      VpcId: !Ref VPC
+      # Inbound
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+        - IpProtocol: "-1"
+          FromPort: -1
+          ToPort: -1
+          CidrIp: "0.0.0.0/0"
 Outputs:
   VPC:
     Description: The exported VPC
@@ -294,3 +387,13 @@ Outputs:
     Value: !Ref PublicSubnet1b
     Export:
       Name: !Sub "PublicSubnet1b"
+  WebServerSecurityGroup:
+    Description: The exported web server security group
+    Value: !Ref WebServerSecurityGroup
+    Export:
+      Name: !Sub "WebServerSecurityGroup"
+  ALBTargetGroup:
+    Description: The exported target group for ALB
+    Value: !Ref ALBTargetGroup
+    Export:
+      Name: !Sub "ALBTargetGroup"

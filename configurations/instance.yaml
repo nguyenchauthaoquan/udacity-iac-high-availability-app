@@ -5,181 +5,82 @@ Parameters:
     Description: An environment name for VPC network configuration
     Type: String
     Default: UdacityHighAvailabilityApp
+  ApplicationsBucketName:
+    Description: Parameter for name of application bucket
+    Type: String
+    Default: application-bucket
 Resources:
+  # ------------ S3 Bucket ----------------------------------------
+  ApplicationBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
+    Properties:
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerPreferred
+      BucketName: !Ref ApplicationsBucketName
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: error.html
+
+  # ------------ Permissions ---------------------------------------
+  ApplicationBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref ApplicationBucket
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Action:
+              - s3:PutObject
+              - s3:GetObject
+            Resource: !Join
+              - ''
+              - - 'arn:aws:s3:::'
+                - !Ref ApplicationBucket
+                - /*
+            Principal:
+              AWS: '*'
+
+
   # ------------ Bastion ------------------------------------------
 
-
   # ------------ Web server ---------------------------------------
-  WebServerIAMRole:
-    Type: AWS::IAM::Role
+  WebServerLaunchConfiguration:
+    Type: AWS::AutoScaling::LaunchConfiguration
     Properties:
-      ManagedPolicyArns:
-        - "arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess"
-      AssumeRolePolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Effect: "Allow"
-            Principal:
-              Service:
-                - "ec2.amazonaws.com"
-            Action:
-              - "sts:AssumeRole"
-      Path: "/"
-  WebServerInstanceProfile:
-    Type: AWS::IAM::InstanceProfile
-    Properties:
-      Path: "/"
-      Roles:
-        - !Ref WebServerIAMRole
-  WebServerTargetGroup:
-    Type: AWS::ElasticLoadBalancingV2::TargetGroup
-    Properties:
-      HealthCheckIntervalSeconds: 10
-      HealthCheckPath: /
-      HealthCheckProtocol: HTTP
-      HealthCheckTimeoutSeconds: 7
-      HealthyThresholdCount: 2
-      TargetType: "instance"
-      Port: 80
-      Protocol: HTTP
-      UnhealthyThresholdCount: 5
-      VpcId:
-        Fn::ImportValue: !Sub "VPC"
-  WebServerSecurityGroup:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      GroupName: "Web server security group"
-      GroupDescription: "Allow HTTP and SSH for web server via security group"
-      VpcId:
-        Fn::ImportValue: !Sub "VPC"
-  WebServerOutboundRuleALL:
-    Type: AWS::EC2::SecurityGroupEgress
-    Properties:
-      GroupId:
-        Ref: "WebServerSecurityGroup"
-      IpProtocol: "-1"
-      FromPort: -1
-      ToPort: -1
-      CidrIp: "0.0.0.0/0"
-      Description: "Allow outbound traffic by default"
-
-  WebServerInboundRuleHTTP:
-    Type: AWS::EC2::SecurityGroupIngress
-    Properties:
-      GroupId:
-        Ref: "WebServerSecurityGroup"
-      IpProtocol: "tcp"
-      FromPort: 80
-      ToPort: 80
-      CidrIp: "0.0.0.0/0"
-      Description: "Allow inbound to the default HTTP port: 80 for load balancer health check"
-
-  WebServerLaunchTemplate:
-    Type: AWS::EC2::LaunchTemplate
-    Properties:
-      LaunchTemplateData:
-        UserData:
-          Fn::Base64: |
-            #!/bin/bash
-            apt-get update -y
-            apt-get install apache2 -y
-            systemctl start apache2.service
-            cd /var/www/html
-            echo "Udacity Demo Web Server Up and Running!" > index.html
-        ImageId: ami-0ab193018f3e9351b
-        KeyName: WebServerKeyPair
-        IamInstanceProfile:
-          Arn: !GetAtt
-            - WebServerInstanceProfile
-            - Arn
-        BlockDeviceMappings:
-          - DeviceName: '/dev/sdk'
-            Ebs:
-              VolumeSize: '10'
-              DeleteOnTermination: true
-              VolumeType: 'gp2'
-        InstanceType: t3.small
-        SecurityGroupIds:
-          - Ref: 'WebServerSecurityGroup'
-      LaunchTemplateName:
-        Fn::Join:
-          - ""
-          - - !Ref EnvironmentName
-            - "-web-server-launch-template-"
-            - Ref: "AWS::Region"
-  WebServersAutoScalingGroup:
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          apt-get update -y
+          apt-get install apache2 -y
+          systemctl start apache2.service
+          cd /var/www/html
+          echo "Udacity Demo Web Server Running!" > index.html
+      ImageId: ami-04a0ae173da5807d3
+      AssociatePublicIpAddress: false
+      SecurityGroups:
+        - Fn::ImportValue: !Sub "WebServerSecurityGroup"
+      InstanceType: t3.small
+      InstanceMonitoring: true
+      BlockDeviceMappings:
+        - DeviceName: "/dev/sdk"
+          Ebs:
+            VolumeSize: '10'
+  WebServerAutoScalingGroup:
     Type: AWS::AutoScaling::AutoScalingGroup
     Properties:
-      MinSize: 2
-      MaxSize: 6
-      DesiredCapacity: 3
       VPCZoneIdentifier:
         - Fn::ImportValue: !Sub "PrivateSubnet1a"
         - Fn::ImportValue: !Sub "PrivateSubnet1b"
-      LaunchTemplate:
-        LaunchTemplateId:
-          Ref: "WebServerLaunchTemplate"
-        Version:
-          Fn::GetAtt: "WebServerLaunchTemplate.LatestVersionNumber"
+      LaunchConfigurationName:
+          Ref: WebServerLaunchConfiguration
+      MinSize: '2'
+      MaxSize: '4'
       TargetGroupARNs:
-        - Ref: "WebServerTargetGroup"
-
-  # ------------ Application Load Balancer ------------------------
-  ALBSecurityGroup:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      GroupName: "Application Load Balancer Security Group"
-      GroupDescription: "LB Security Group for application"
-      VpcId:
-        Fn::ImportValue: !Sub "VPC"
-  LoadBalancerOutboundRuleHTTP:
-    Type: AWS::EC2::SecurityGroupEgress
-    Properties:
-      GroupId:
-        Ref: "ALBSecurityGroup"
-      IpProtocol: "tcp"
-      FromPort: 80
-      ToPort: 80
-      CidrIp: "0.0.0.0/0"
-      Description: "Allow all egress traffic by default"
-
-  LoadBalancerInboundRuleHTTP:
-    Type: AWS::EC2::SecurityGroupIngress
-    Properties:
-      GroupId:
-        Ref: "ALBSecurityGroup"
-      IpProtocol: "tcp"
-      FromPort: 80
-      ToPort: 80
-      CidrIp: "0.0.0.0/0"
-      Description: "Allow ingress to the default HTTP port: 80 for load balancer health check"
-
-  ApplicationLoadBalancer:
-    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
-    Properties:
-      Subnets:
-        - Fn::ImportValue: !Sub "PublicSubnet1a"
-        - Fn::ImportValue: !Sub "PublicSubnet1b"
-      SecurityGroups:
-        - Ref: "ALBSecurityGroup"
-  ALBListener:
-    Type: AWS::ElasticLoadBalancingV2::Listener
-    Properties:
-      DefaultActions:
-        - Type: forward
-          TargetGroupArn: !Ref WebServerTargetGroup
-      LoadBalancerArn: !Ref ApplicationLoadBalancer
-      Port: 80
-      Protocol: HTTP
-  ALBListenerRule:
-    Type: AWS::ElasticLoadBalancingV2::ListenerRule
-    Properties:
-      Actions:
-        - Type: forward
-          TargetGroupArn: !Ref WebServerTargetGroup
-      Conditions:
-        - Field: path-pattern
-          Values: [ / ]
-      ListenerArn: !Ref ALBListener
-      Priority: 1
-
+        - Fn::ImportValue: !Sub "ALBTargetGroup"

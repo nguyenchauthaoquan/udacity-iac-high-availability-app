@@ -4,3 +4,5 @@ aws cloudformation create-stack \
 --template-body file://network.yaml \
 --parameters file://parameters/network.json \
 --capabilities "CAPABILITY_NAMED_IAM"
+
+sleep 100
