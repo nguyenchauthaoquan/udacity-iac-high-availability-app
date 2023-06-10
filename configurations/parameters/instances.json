@@ -6,5 +6,9 @@
   {
     "ParameterKey": "ApplicationsBucketName",
     "ParameterValue": "udacity-application-bucket"
+  },
+  {
+    "ParameterKey": "KeysBucketName",
+    "ParameterValue": "udacity-keys-bucket"
   }
 ]

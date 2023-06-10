@@ -4,82 +4,184 @@ Parameters:
   EnvironmentName:
     Description: An environment name for VPC network configuration
     Type: String
-    Default: UdacityHighAvailabilityApp
+    Default: UdacityInstances
   ApplicationsBucketName:
-    Description: Parameter for name of application bucket
+    Description: The bucket name for application bucket
     Type: String
-    Default: application-bucket
+    Default: udacity-application-bucket
+  KeysBucketName:
+    Description: The bucket name for keys bucket
+    Type: String
+    Default: udacity-keys-bucket
 Resources:
-  # ------------ S3 Bucket ----------------------------------------
   ApplicationBucket:
     Type: AWS::S3::Bucket
     DeletionPolicy: Delete
     Properties:
+      BucketName: !Ref ApplicationsBucketName
       PublicAccessBlockConfiguration:
-        BlockPublicAcls: true
+        BlockPublicAcls: false
         BlockPublicPolicy: false
         IgnorePublicAcls: false
         RestrictPublicBuckets: false
-      OwnershipControls:
-        Rules:
-          - ObjectOwnership: BucketOwnerPreferred
-      BucketName: !Ref ApplicationsBucketName
       WebsiteConfiguration:
         IndexDocument: index.html
         ErrorDocument: error.html
-
-  # ------------ Permissions ---------------------------------------
+  KeysBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
+    Properties:
+      BucketName: !Ref KeysBucketName
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: false
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+  KeysBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref KeysBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: PublicReadGetObject
+            Effect: Allow
+            Principal: '*'
+            Action:
+              - s3:GetObject
+              - s3:PutObject
+            Resource: !Sub "arn:aws:s3:::${KeysBucket}/*"
   ApplicationBucketPolicy:
     Type: AWS::S3::BucketPolicy
     Properties:
       Bucket: !Ref ApplicationBucket
       PolicyDocument:
+        Id: ApplicationBucketPolicy
+        Version: '2012-10-17'
         Statement:
-          - Effect: Allow
+          - Sid: PublicReadGetObject
+            Effect: Allow
+            Principal: '*'
             Action:
-              - s3:PutObject
               - s3:GetObject
-            Resource: !Join
-              - ''
-              - - 'arn:aws:s3:::'
-                - !Ref ApplicationBucket
-                - /*
-            Principal:
-              AWS: '*'
+            Resource: !Sub 'arn:aws:s3:::${ApplicationBucket}/*'
+  # Instance network components
+  LoadBalancerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: "Load Balancer Security Group"
+      GroupDescription: "Allow http traffic to the load balancer"
+      VpcId:
+        Fn::ImportValue: !Sub "VPC"
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
 
-
-  # ------------ Bastion ------------------------------------------
-
-  # ------------ Web server ---------------------------------------
-  WebServerLaunchConfiguration:
+  WebServerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow http to our webApp Hosts and ssh only from local
+      VpcId:
+        Fn::ImportValue: !Sub "VPC"
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 0
+          ToPort: 65535
+          CidrIp: 0.0.0.0/0
+  WebAppLaunchConfig:
     Type: AWS::AutoScaling::LaunchConfiguration
     Properties:
+      KeyName: WebServerKeyPair
       UserData:
         Fn::Base64: !Sub |
-          sudo yum update -y
-          sudo yum install -y httpd.x86_64
-          sudo systemctl start httpd.service
-          sudo systemctl enable httpd.service
+          #!/bin/bash
+          apt-get update -y
+          apt-get install apache2 -y
+          systemctl start apache2.service
           cd /var/www/html
-          echo "Udacity Demo Web Server Running!" > index.html
-      ImageId: ami-04a0ae173da5807d3
+          echo "Udacity Demo Web Server Up and Running!" > index.html
+      ImageId: ami-09988af04120b3591
+      AssociatePublicIpAddress: false
       SecurityGroups:
-        - Fn::ImportValue: !Sub "WebServerSecurityGroup"
+        - Ref: WebServerSecurityGroup
       InstanceType: t3.small
-      InstanceMonitoring: true
       BlockDeviceMappings:
         - DeviceName: "/dev/sdk"
           Ebs:
             VolumeSize: '10'
-  WebServerAutoScalingGroup:
+            DeleteOnTermination: true
+            VolumeType: 'gp2'
+  WebAppGroup:
     Type: AWS::AutoScaling::AutoScalingGroup
     Properties:
       VPCZoneIdentifier:
-        - Fn::ImportValue: !Sub "PrivateSubnet1a"
-        - Fn::ImportValue: !Sub "PrivateSubnet1b"
+        - Fn::ImportValue:
+            !Sub "PrivateSubnets"
       LaunchConfigurationName:
-          Ref: WebServerLaunchConfiguration
-      MinSize: '2'
-      MaxSize: '4'
+        Ref: WebAppLaunchConfig
+      MinSize: "4"
+      MaxSize: "4"
       TargetGroupARNs:
-        - Fn::ImportValue: !Sub "ALBTargetGroup"
+        - Ref: WebAppTargetGroup
+  WebApploadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Subnets:
+        - Fn::ImportValue: !Sub "PublicSubnet1a"
+        - Fn::ImportValue: !Sub "PublicSubnet1b"
+      SecurityGroups:
+        - Ref: LoadBalancerSecurityGroup
+  Listener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn:
+            Ref: WebAppTargetGroup
+      LoadBalancerArn:
+        Ref: WebApploadBalancer
+      Port: '80'
+      Protocol: HTTP
+  ALBListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      Actions:
+        - Type: forward
+          TargetGroupArn:
+            Ref: WebAppTargetGroup
+      Conditions:
+        - Field: path-pattern
+          Values: [ / ]
+      ListenerArn:
+        Ref: Listener
+      Priority: 1
+  WebAppTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 5
+      HealthCheckPath: /
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 4
+      HealthyThresholdCount: 3
+      Port: 80
+      Protocol: HTTP
+      UnhealthyThresholdCount: 3
+      VpcId:
+        Fn::ImportValue:
+          Fn::Sub: "VPC"
