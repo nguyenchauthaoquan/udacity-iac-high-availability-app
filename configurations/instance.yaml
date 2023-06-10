@@ -56,14 +56,13 @@ Resources:
     Properties:
       UserData:
         Fn::Base64: !Sub |
-          #!/bin/bash
-          apt-get update -y
-          apt-get install apache2 -y
-          systemctl start apache2.service
+          sudo yum update -y
+          sudo yum install -y httpd.x86_64
+          sudo systemctl start httpd.service
+          sudo systemctl enable httpd.service
           cd /var/www/html
           echo "Udacity Demo Web Server Running!" > index.html
       ImageId: ami-04a0ae173da5807d3
-      AssociatePublicIpAddress: false
       SecurityGroups:
         - Fn::ImportValue: !Sub "WebServerSecurityGroup"
       InstanceType: t3.small
