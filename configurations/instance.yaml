@@ -1,0 +1,335 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: This template deploys the instances
+Parameters:
+  EnvironmentName:
+    Description: An environment name for VPC network configuration
+    Type: String
+    Default: UdacityInstances
+  ApplicationsBucketName:
+    Description: The bucket name for application bucket
+    Type: String
+    Default: udacity-application-bucket
+  KeysBucketName:
+    Description: The bucket name for keys bucket
+    Type: String
+    Default: udacity-keys-bucket
+  WebServerPolicies:
+    Description: The policies for web server
+    Type: CommaDelimitedList
+  BastionHostKeyPair:
+    Description: The key pair for bastion host
+    Type: 'AWS::EC2::KeyPair::KeyName'
+  WebserverKeyPair:
+    Description: The key pair for web server
+    Type: 'AWS::EC2::KeyPair::KeyName'
+Resources:
+  ApplicationBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
+    Properties:
+      BucketName: !Ref ApplicationsBucketName
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: error.html
+  KeysBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
+    Properties:
+      BucketName: !Ref KeysBucketName
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: false
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  # ------------ IAM roles -----------------------------------------
+  # ----------------------------------------------------------------
+  BastionHostIAMRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: '/'
+  WebServerIAMRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - "ec2.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      ManagedPolicyArns: !Ref WebServerPolicies
+
+  # ------------ IAM policies --------------------------------------
+  # ----------------------------------------------------------------
+  BastionHostIAMPolicies:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: BastionHostFullAccess
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: 's3:*'
+            Resource: '*'
+      Roles:
+        - !Ref BastionHostIAMRole
+
+  KeysBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref KeysBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: PublicReadGetObject
+            Effect: Allow
+            Principal: '*'
+            Action:
+              - s3:GetObject
+              - s3:PutObject
+            Resource: !Sub "arn:aws:s3:::${KeysBucket}/*"
+  ApplicationBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref ApplicationBucket
+      PolicyDocument:
+        Id: ApplicationBucketPolicy
+        Version: '2012-10-17'
+        Statement:
+          - Sid: PublicReadGetObject
+            Effect: Allow
+            Principal: '*'
+            Action:
+              - s3:GetObject
+            Resource: !Sub 'arn:aws:s3:::${ApplicationBucket}/*'
+
+  # ------------ IAM instance profile ------------------------------
+  # ----------------------------------------------------------------
+  BastionHostIAMInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: '/'
+      Roles:
+        - !Ref BastionHostIAMRole
+  WebServerInstanceProfile:
+    Type: "AWS::IAM::InstanceProfile"
+    Properties:
+      Path: "/"
+      Roles:
+        - Ref: WebServerIAMRole
+  # ------------ Availability Zone 1a ------------------
+  # ----------------------------------------------------
+
+  # ------------ Bastion host --------------------------------------
+  # ----------------------------------------------------------------
+  BastionHostLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateData:
+        ImageId: ami-09988af04120b3591
+        KeyName: !Ref BastionHostKeyPair
+        InstanceType: t3.small
+        NetworkInterfaces:
+          - AssociatePublicIpAddress: true
+            DeleteOnTermination: true
+            DeviceIndex: 0
+            Groups:
+              - Fn::ImportValue: !Sub BastionHostSecurityGroup
+      LaunchTemplateName:
+        Fn::Join:
+          - ''
+          - - !Ref EnvironmentName
+            - "-bastion-hosts-launch-template-"
+            - Ref: "AWS::Region"
+
+  BastionHost1a:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: ami-09988af04120b3591
+      InstanceType: t3.small
+      KeyName: !Ref BastionHostKeyPair
+      SecurityGroupIds:
+        - Fn::ImportValue: !Sub BastionHostSecurityGroup
+      SubnetId:
+        Fn::ImportValue: !Sub PublicSubnet1a
+      IamInstanceProfile: !Ref BastionHostIAMInstanceProfile
+      Tags:
+        - Key: Name
+          Value:
+            Fn::Join:
+              - ''
+              - - !Ref EnvironmentName
+                - '-bastion-host-'
+                - !Select [ 0, !GetAZs '']
+  # ------------ Bastion host network ------------------------------
+  # ----------------------------------------------------------------
+  BastionHostEIP1a:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain:
+        Fn::ImportValue: !Sub VPC
+      Tags:
+        - Key: Name
+          Value:
+            Fn::Join:
+              - ''
+              - - !Ref EnvironmentName
+                - '-bastion-host-elastic-ip-'
+                - !Select [ 0, !GetAZs '' ]
+  BastionHostEIP1aAssociation:
+    Type: AWS::EC2::EIPAssociation
+    DependsOn:
+      - BastionHost1a
+      - BastionHostEIP1a
+    Properties:
+      InstanceId:
+        Ref: BastionHost1a
+      AllocationId:
+        Fn::GetAtt:
+          - BastionHostEIP1a
+          - AllocationId
+  # ------------ Availability Zone 1b ------------------
+  # ----------------------------------------------------
+
+  # ------------ Bastion host --------------------------
+  # ----------------------------------------------------
+  BastionHost1b:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: ami-09988af04120b3591
+      KeyName: !Ref BastionHostKeyPair
+      InstanceType: t3.small
+      SecurityGroupIds:
+        - Fn::ImportValue: !Sub BastionHostSecurityGroup
+      SubnetId:
+        Fn::ImportValue: !Sub PublicSubnet1b
+      IamInstanceProfile: !Ref BastionHostIAMInstanceProfile
+      Tags:
+        - Key: Name
+          Value:
+            Fn::Join:
+              - ''
+              - - !Ref EnvironmentName
+                - '-bastion-host-'
+                - !Select [ 1, !GetAZs '' ]
+  # ------------ Bastion host network ------------------------------
+  # ----------------------------------------------------------------
+  BastionHostEIP1b:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain:
+        Fn::ImportValue: !Sub VPC
+      Tags:
+        - Key: Name
+          Value:
+            Fn::Join:
+              - ''
+              - - !Ref EnvironmentName
+                - '-bastion-host-elastic-ip-'
+                - !Select [ 1, !GetAZs '' ]
+
+  BastionHostEIP1bAssociation:
+    Type: AWS::EC2::EIPAssociation
+    DependsOn:
+      - BastionHost1b
+      - BastionHostEIP1b
+    Properties:
+      InstanceId:
+        Ref: BastionHost1b
+      AllocationId:
+        Fn::GetAtt:
+          - BastionHostEIP1b
+          - AllocationId
+  # ------------ Web server network --------------------------------
+  # ----------------------------------------------------------------
+  WebServerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: "Web Server security group"
+      GroupDescription: Allow http traffic to web server
+      VpcId:
+        Fn::ImportValue: !Sub VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+          Description: "Allow the inbound rule to all traffic of web server"
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Join ['', [!GetAtt BastionHost1a.PrivateIp, !Sub '/32']]
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Join ['', [!GetAtt BastionHost1b.PrivateIp, !Sub '/32']]
+          Description: "Allow the inbound rule to specific traffic of web server"
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 0
+          ToPort: 65535
+          CidrIp: 0.0.0.0/0
+          Description: "Allow the outbound rule to specific traffic of web server"
+        - IpProtocol: "-1"
+          FromPort: -1
+          ToPort: -1
+          CidrIp: "0.0.0.0/0"
+
+  # ------------ Web server --------------------------------
+  # --------------------------------------------------------
+  WebServerLaunchConfiguration:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          apt-get update -y
+          apt-get install apache2 -y
+          systemctl start apache2.service
+          cd /var/www/html
+          echo "Udacity Demo Web Server Up and Running!" > index.html
+      ImageId: ami-09988af04120b3591
+      InstanceType: t3.small
+      KeyName: !Ref WebserverKeyPair
+      IamInstanceProfile: !Ref WebServerInstanceProfile
+      SecurityGroups:
+        - Ref: WebServerSecurityGroup
+      BlockDeviceMappings:
+        - DeviceName: "/dev/sdk"
+          Ebs:
+            VolumeSize: '10'
+            DeleteOnTermination: true
+            VolumeType: 'gp2'
+  WebServerAutoscalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      VPCZoneIdentifier:
+        - Fn::ImportValue: !Sub PrivateSubnet1a
+        - Fn::ImportValue: !Sub PrivateSubnet1b
+      MinSize: 2
+      MaxSize: 4
+      DesiredCapacity: 2
+      LaunchConfigurationName: !Ref WebServerLaunchConfiguration
+      TargetGroupARNs:
+        - Fn::ImportValue: !Sub ALBTargetGroup
