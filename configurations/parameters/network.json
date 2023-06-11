@@ -22,5 +22,9 @@
   {
     "ParameterKey": "PrivateSubnetCIDR1b",
     "ParameterValue": "10.0.3.0/24"
+  },
+  {
+    "ParameterKey": "BastionHostCidrBlock",
+    "ParameterValue": "0.0.0.0/0"
   }
 ]

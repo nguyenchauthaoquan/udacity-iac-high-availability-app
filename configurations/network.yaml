@@ -25,7 +25,13 @@ Parameters:
     Description: Private Subnet CIDR for availability zone 1b
     Type: String
     Default: 10.0.3.0/24
+  BastionHostCidrBlock:
+    Description: Bastion host trusted CIDR
+    Type: String
+    Default: 43.120.73.123/32
 Resources:
+  # ------------ VPC -----------------------------------
+  # ----------------------------------------------------
   VPC:
     Type: AWS::EC2::VPC
     Properties:
@@ -39,6 +45,8 @@ Resources:
               - - !Ref EnvironmentName
                 - "-vpc-"
                 - Ref: "AWS::Region"
+  # ------------ VPC Internet gateway ------------------
+  # ----------------------------------------------------
   InternetGateway:
     Type: AWS::EC2::InternetGateway
     Properties:
@@ -55,118 +63,8 @@ Resources:
     Properties:
       InternetGatewayId: !Ref InternetGateway
       VpcId: !Ref VPC
-  PublicSubnet1a:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref VPC
-      AvailabilityZone: !Select [ 0, !GetAZs '' ]
-      CidrBlock: !Ref PublicSubnetCIDR1a
-      MapPublicIpOnLaunch: true
-      Tags:
-          - Key: Name
-            Value:
-              Fn::Join:
-                - ''
-                - - !Ref EnvironmentName
-                  - "-public-subnet-"
-                  - !Select [ 0, !GetAZs '' ]
-  PublicSubnet1b:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref VPC
-      AvailabilityZone: !Select [ 1, !GetAZs '' ]
-      CidrBlock: !Ref PublicSubnetCIDR1b
-      MapPublicIpOnLaunch: true
-      Tags:
-          - Key: Name
-            Value:
-              Fn::Join:
-                - ''
-                - - !Ref EnvironmentName
-                  - "-public-subnet-"
-                  - !Select [ 1, !GetAZs '' ]
-  PrivateSubnet1a:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref VPC
-      MapPublicIpOnLaunch: false
-      AvailabilityZone: !Select [ 0, !GetAZs '' ]
-      CidrBlock: !Ref PrivateSubnetCIDR1a
-      Tags:
-        - Key: Name
-          Value:
-            Fn::Join:
-              - ''
-              - - !Ref EnvironmentName
-                - "-private-subnet-"
-                - !Select [ 0, !GetAZs '' ]
-  PrivateSubnet1b:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref VPC
-      MapPublicIpOnLaunch: false
-      AvailabilityZone: !Select [ 1, !GetAZs '' ]
-      CidrBlock: !Ref PrivateSubnetCIDR1b
-      Tags:
-        - Key: Name
-          Value:
-            Fn::Join:
-              - ''
-              - - !Ref EnvironmentName
-                - "-private-subnet-"
-                - !Select [ 1, !GetAZs '' ]
-  ElasticIP1a:
-    Type: AWS::EC2::EIP
-    DependsOn: InternetGatewayAttachment
-    Properties:
-      Domain: vpc
-      Tags:
-        - Key: Name
-          Value:
-            Fn::Join:
-              - ''
-              - - !Ref EnvironmentName
-                - '-elastic-ip-'
-                - !Select [ 0, !GetAZs '']
-  ElasticIP1b:
-    Type: AWS::EC2::EIP
-    DependsOn: InternetGatewayAttachment
-    Properties:
-      Domain: vpc
-      Tags:
-        - Key: Name
-          Value:
-            Fn::Join:
-              - ''
-              - - !Ref EnvironmentName
-                - '-elastic-ip-'
-                - !Select [ 1, !GetAZs '']
-  NATGateway1a:
-    Type: AWS::EC2::NatGateway
-    Properties:
-      AllocationId: !GetAtt ElasticIP1a.AllocationId
-      SubnetId: !Ref PublicSubnet1a
-      Tags:
-        - Key: Name
-          Value:
-            Fn::Join:
-              - ''
-              - - !Ref EnvironmentName
-                - '-nat-gateway-'
-                - !Select [ 0, !GetAZs '']
-  NATGateway1b:
-    Type: AWS::EC2::NatGateway
-    Properties:
-      AllocationId: !GetAtt ElasticIP1b.AllocationId
-      SubnetId: !Ref PublicSubnet1b
-      Tags:
-        - Key: Name
-          Value:
-            Fn::Join:
-              - ''
-              - - !Ref EnvironmentName
-                - '-nat-gateway-'
-                - !Select [ 1, !GetAZs '']
+  # ------------ Public routes table -------------------
+  # ----------------------------------------------------
   PublicRouteTable:
     Type: AWS::EC2::RouteTable
     Properties:
@@ -186,16 +84,50 @@ Resources:
       RouteTableId: !Ref PublicRouteTable
       DestinationCidrBlock: 0.0.0.0/0
       GatewayId: !Ref InternetGateway
+  # ------------ Availability Zone 1a ------------------
+  # ----------------------------------------------------
+
+  # ------------ Public Subnet -------------------------
+  # ----------------------------------------------------
+  PublicSubnet1a:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      CidrBlock: !Ref PublicSubnetCIDR1a
+      MapPublicIpOnLaunch: true
+      Tags:
+          - Key: Name
+            Value:
+              Fn::Join:
+                - ''
+                - - !Ref EnvironmentName
+                  - "-public-subnet-"
+                  - !Select [ 0, !GetAZs '' ]
+
   PublicSubnetRouteTableAssociation1a:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
       RouteTableId: !Ref PublicRouteTable
       SubnetId: !Ref PublicSubnet1a
-  PublicSubnetRouteTableAssociation1b:
-    Type: AWS::EC2::SubnetRouteTableAssociation
+
+  # ------------ Private Subnet -------------------------
+  # -----------------------------------------------------
+  PrivateSubnet1a:
+    Type: AWS::EC2::Subnet
     Properties:
-      RouteTableId: !Ref PublicRouteTable
-      SubnetId: !Ref PublicSubnet1b
+      VpcId: !Ref VPC
+      MapPublicIpOnLaunch: false
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      CidrBlock: !Ref PrivateSubnetCIDR1a
+      Tags:
+        - Key: Name
+          Value:
+            Fn::Join:
+              - ''
+              - - !Ref EnvironmentName
+                - "-private-subnet-"
+                - !Select [ 0, !GetAZs '' ]
   PrivateRouteTable1a:
     Type: AWS::EC2::RouteTable
     Properties:
@@ -207,7 +139,97 @@ Resources:
               - ''
               - - !Ref EnvironmentName
                 - '-private-route-table-'
-                - !Select [0, !GetAZs '']
+                - !Select [ 0, !GetAZs '' ]
+  DefaultPrivateRoute1a:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable1a
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NATGateway1a
+
+  PrivateSubnetRouteTableAssociation1a:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable1a
+      SubnetId: !Ref PrivateSubnet1a
+
+  # ------------ Elastic IP -------------------------
+  # -------------------------------------------------
+  ElasticIP1a:
+    Type: AWS::EC2::EIP
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      Domain: !Ref VPC
+      Tags:
+        - Key: Name
+          Value:
+            Fn::Join:
+              - ''
+              - - !Ref EnvironmentName
+                - '-elastic-ip-'
+                - !Select [ 0, !GetAZs '' ]
+
+  # ------------ VPC NAT gateway ------------------
+  # -----------------------------------------------
+  NATGateway1a:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt ElasticIP1a.AllocationId
+      SubnetId: !Ref PublicSubnet1a
+      Tags:
+        - Key: Name
+          Value:
+            Fn::Join:
+              - ''
+              - - !Ref EnvironmentName
+                - '-nat-gateway-'
+                - !Select [ 0, !GetAZs '' ]
+
+  # ------------ Availability Zone 1b ------------------
+  # ----------------------------------------------------
+  # ------------ Public Subnet -------------------------
+  PublicSubnet1b:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 1, !GetAZs '' ]
+      CidrBlock: !Ref PublicSubnetCIDR1b
+      MapPublicIpOnLaunch: true
+      Tags:
+          - Key: Name
+            Value:
+              Fn::Join:
+                - ''
+                - - !Ref EnvironmentName
+                  - "-public-subnet-"
+                  - !Select [ 1, !GetAZs '' ]
+
+  PublicSubnetRouteTableAssociation1b:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet1b
+
+  # ------------ Private Subnet -------------------------
+  # -----------------------------------------------------
+  PrivateSubnet1b:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      MapPublicIpOnLaunch: false
+      AvailabilityZone: !Select [ 1, !GetAZs '' ]
+      CidrBlock: !Ref PrivateSubnetCIDR1b
+      Tags:
+        - Key: Name
+          Value:
+            Fn::Join:
+              - ''
+              - - !Ref EnvironmentName
+                - "-private-subnet-"
+                - !Select [ 1, !GetAZs '' ]
+
+  # ------------ Private Route Table -------------------------
+  # ----------------------------------------------------------
   PrivateRouteTable1b:
     Type: AWS::EC2::RouteTable
     Properties:
@@ -219,29 +241,149 @@ Resources:
               - ''
               - - !Ref EnvironmentName
                 - '-private-route-table-'
-                - !Select [1, !GetAZs '']
-  DefaultPrivateRoute1a:
-    Type: AWS::EC2::Route
-    Properties:
-      RouteTableId: !Ref PrivateRouteTable1a
-      DestinationCidrBlock: 0.0.0.0/0
-      NatGatewayId: !Ref NATGateway1a
+                - !Select [ 1, !GetAZs '' ]
   DefaultPrivateRoute1b:
     Type: AWS::EC2::Route
     Properties:
       RouteTableId: !Ref PrivateRouteTable1b
       DestinationCidrBlock: 0.0.0.0/0
       NatGatewayId: !Ref NATGateway1b
-  PrivateSubnetRouteTableAssociation1a:
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Properties:
-      RouteTableId: !Ref PrivateRouteTable1a
-      SubnetId: !Ref PrivateSubnet1a
   PrivateSubnetRouteTableAssociation1b:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
       RouteTableId: !Ref PrivateRouteTable1b
       SubnetId: !Ref PrivateSubnet1b
+
+  # ------------ Elastic IP -------------------------
+  # -------------------------------------------------
+  ElasticIP1b:
+    Type: AWS::EC2::EIP
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      Domain: !Ref VPC
+      Tags:
+        - Key: Name
+          Value:
+            Fn::Join:
+              - ''
+              - - !Ref EnvironmentName
+                - '-elastic-ip-'
+                - !Select [ 1, !GetAZs '']
+
+  # ------------ VPC NAT gateway -------------------------
+  # ------------------------------------------------------
+  NATGateway1b:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt ElasticIP1b.AllocationId
+      SubnetId: !Ref PublicSubnet1b
+      Tags:
+        - Key: Name
+          Value:
+            Fn::Join:
+              - ''
+              - - !Ref EnvironmentName
+                - '-nat-gateway-'
+                - !Select [ 1, !GetAZs '']
+
+  # ------------ Application Load Balancer -------------------------
+  # ----------------------------------------------------------------
+  ALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: "Load Balancer Security Group"
+      GroupDescription: "Allow http traffic to the load balancer"
+      VpcId: !Ref "VPC"
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value:
+            Fn::Join:
+              - ''
+              - - !Ref EnvironmentName
+                - '-application-load-balancer-security-group-'
+                - Ref: "AWS::Region"
+  ApplicationLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Subnets:
+        - Ref: "PublicSubnet1a"
+        - Ref: "PublicSubnet1b"
+      SecurityGroups:
+        - Ref: ALBSecurityGroup
+      Tags:
+        - Key: Name
+          Value:
+            Fn::Join:
+              - ''
+              - - !Ref EnvironmentName
+                - '-application-load-balancer-'
+                - Ref: "AWS::Region"
+  ALBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn:
+            Ref: ALBTargetGroup
+      LoadBalancerArn:
+        Ref: ApplicationLoadBalancer
+      Port: '80'
+      Protocol: HTTP
+  ALBListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      Actions:
+        - Type: forward
+          TargetGroupArn:
+            Ref: ALBTargetGroup
+      Conditions:
+        - Field: path-pattern
+          Values: [ / ]
+      ListenerArn:
+        Ref: ALBListener
+      Priority: 1
+  ALBTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 5
+      HealthCheckPath: /
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 4
+      HealthyThresholdCount: 3
+      Port: 80
+      Protocol: HTTP
+      UnhealthyThresholdCount: 3
+      VpcId: !Ref VPC
+  # ------------ Bastion host network ------------------------------
+  # ----------------------------------------------------------------
+  BastionHostSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: "Bastion host security group"
+      GroupDescription: Allow http traffic to bastion host
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref BastionHostCidrBlock
+          Description: "Allow the inbound rule to specific traffic of bastion host"
+      SecurityGroupEgress:
+        - IpProtocol: "-1"
+          FromPort: -1
+          ToPort: -1
+          CidrIp: 0.0.0.0/0
+          Description: "Allow the outbound rule to all traffic of bastion host"
 
 Outputs:
   VPC:
@@ -284,3 +426,23 @@ Outputs:
     Value: !Join [",", [!Ref PrivateSubnet1a, !Ref PrivateSubnet1b]]
     Export:
       Name: !Sub PrivateSubnets
+  PrivateSubnet1a:
+    Description: The exported private subnets for references by the other templates
+    Value: !Ref PrivateSubnet1a
+    Export:
+      Name: !Sub PrivateSubnet1a
+  PrivateSubnet1b:
+    Description: The exported private subnets for references by the other templates
+    Value: !Ref PrivateSubnet1b
+    Export:
+      Name: !Sub PrivateSubnet1b
+  ALBTargetGroup:
+    Description: The exported target group
+    Value: !Ref ALBTargetGroup
+    Export:
+      Name: !Sub ALBTargetGroup
+  BastionHostSecurityGroup:
+    Description: The exported Bastion security group for references by the other templates
+    Value: !Ref BastionHostSecurityGroup
+    Export:
+      Name: !Sub BastionHostSecurityGroup

@@ -10,5 +10,17 @@
   {
     "ParameterKey": "KeysBucketName",
     "ParameterValue": "udacity-keys-bucket"
+  },
+  {
+    "ParameterKey": "BastionHostKeyPair",
+    "ParameterValue": "BastionHostKeyPair"
+  },
+  {
+    "ParameterKey": "WebserverKeyPair",
+    "ParameterValue": "WebserverKeyPair"
+  },
+  {
+    "ParameterKey": "WebServerPolicies",
+    "ParameterValue": "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore,arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess"
   }
 ]
