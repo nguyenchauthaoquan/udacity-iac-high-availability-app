@@ -28,7 +28,7 @@ Parameters:
   BastionHostCidrBlock:
     Description: Bastion host trusted CIDR
     Type: String
-    Default: 43.120.73.123/32
+    Default: 0.0.0.0/0
 Resources:
   # ------------ VPC -----------------------------------
   # ----------------------------------------------------
@@ -446,3 +446,10 @@ Outputs:
     Value: !Ref BastionHostSecurityGroup
     Export:
       Name: !Sub BastionHostSecurityGroup
+  TestingUrl:
+    Description: The ALB testing url
+    Value:
+      Fn::Sub:
+        - "http://${url}"
+        - url:
+            Fn::GetAtt: ApplicationLoadBalancer.DNSName
