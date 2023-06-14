@@ -53,7 +53,7 @@ configurations: the directory running the deployment of network stacks and insta
 
 documentation: the directory of aws diagram
 
-### How to run
+### How to deploy the cloud formation stacks
 #### Create stacks:
 step 1: go to configurations folder
 step 2: run create-network-stacks.sh to create the network stack
