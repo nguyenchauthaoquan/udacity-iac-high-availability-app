@@ -8,10 +8,6 @@
     "ParameterValue": "udacity-application-bucket"
   },
   {
-    "ParameterKey": "KeysBucketName",
-    "ParameterValue": "udacity-keys-bucket"
-  },
-  {
     "ParameterKey": "BastionHostKeyPair",
     "ParameterValue": "BastionHostKeyPair"
   },
