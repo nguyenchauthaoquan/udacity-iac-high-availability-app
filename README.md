@@ -57,7 +57,7 @@ documentation: the directory of aws diagram
 #### Create stacks:
 step 1: go to configurations folder
 step 2: run create-network-stacks.sh to create the network stack
-step 3: run create-instance-stacks.sh after the network stack is created successfully (<font color="red"><strong>do not run this file first when we want to create stack, some resources are refer to network stacks resources</strong></font>)
+step 3: run create-instance-stacks.sh after the network stack is created successfully (<font color="red"><strong>do not run update-network-stacks.sh first when we want to create stack, some resources are refered by instance stacks resources</strong></font>)
 step 4: access to the Application Load Balancer URL from the input (name of the output is TestingUrl)
 #### Update stacks:
 step 1: go to configurations folder
