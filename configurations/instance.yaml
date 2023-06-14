@@ -9,10 +9,6 @@ Parameters:
     Description: The bucket name for application bucket
     Type: String
     Default: udacity-application-bucket
-  KeysBucketName:
-    Description: The bucket name for keys bucket
-    Type: String
-    Default: udacity-keys-bucket
   WebServerPolicies:
     Description: The policies for web server
     Type: CommaDelimitedList
@@ -22,6 +18,10 @@ Parameters:
   WebserverKeyPair:
     Description: The key pair for web server
     Type: 'AWS::EC2::KeyPair::KeyName'
+  DefaultPublicCidr:
+    Description: Default public CIDR range.
+    Type: String
+    Default: 0.0.0.0/0
 Resources:
   ApplicationBucket:
     Type: AWS::S3::Bucket
@@ -36,17 +36,6 @@ Resources:
       WebsiteConfiguration:
         IndexDocument: index.html
         ErrorDocument: error.html
-  KeysBucket:
-    Type: AWS::S3::Bucket
-    DeletionPolicy: Delete
-    Properties:
-      BucketName: !Ref KeysBucketName
-      PublicAccessBlockConfiguration:
-        BlockPublicAcls: true
-        BlockPublicPolicy: false
-        IgnorePublicAcls: true
-        RestrictPublicBuckets: true
-
   # ------------ IAM roles -----------------------------------------
   # ----------------------------------------------------------------
   BastionHostIAMRole:
@@ -90,21 +79,6 @@ Resources:
             Resource: '*'
       Roles:
         - !Ref BastionHostIAMRole
-
-  KeysBucketPolicy:
-    Type: AWS::S3::BucketPolicy
-    Properties:
-      Bucket: !Ref KeysBucket
-      PolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Sid: PublicReadGetObject
-            Effect: Allow
-            Principal: '*'
-            Action:
-              - s3:GetObject
-              - s3:PutObject
-            Resource: !Sub "arn:aws:s3:::${KeysBucket}/*"
   ApplicationBucketPolicy:
     Type: AWS::S3::BucketPolicy
     Properties:
@@ -128,12 +102,14 @@ Resources:
       Path: '/'
       Roles:
         - !Ref BastionHostIAMRole
+
   WebServerInstanceProfile:
     Type: "AWS::IAM::InstanceProfile"
     Properties:
       Path: "/"
       Roles:
         - Ref: WebServerIAMRole
+
   # ------------ Availability Zone 1a ------------------
   # ----------------------------------------------------
 
@@ -143,15 +119,27 @@ Resources:
     Type: AWS::EC2::LaunchTemplate
     Properties:
       LaunchTemplateData:
-        ImageId: ami-09988af04120b3591
-        KeyName: !Ref BastionHostKeyPair
+        ImageId: ami-053b0d53c279acc90
         InstanceType: t3.small
+        KeyName: !Ref BastionHostKeyPair
+        BlockDeviceMappings:
+          - DeviceName: "/dev/sdk"
+            Ebs:
+              VolumeSize: '10'
+              DeleteOnTermination: true
+              VolumeType: 'gp2'
         NetworkInterfaces:
           - AssociatePublicIpAddress: true
             DeleteOnTermination: true
             DeviceIndex: 0
             Groups:
               - Fn::ImportValue: !Sub BastionHostSecurityGroup
+        IamInstanceProfile:
+          Arn: !GetAtt
+            - BastionHostIAMInstanceProfile
+            - Arn
+        Monitoring:
+          Enabled: true
       LaunchTemplateName:
         Fn::Join:
           - ''
@@ -162,14 +150,15 @@ Resources:
   BastionHost1a:
     Type: AWS::EC2::Instance
     Properties:
-      ImageId: ami-09988af04120b3591
-      InstanceType: t3.small
-      KeyName: !Ref BastionHostKeyPair
-      SecurityGroupIds:
-        - Fn::ImportValue: !Sub BastionHostSecurityGroup
-      SubnetId:
-        Fn::ImportValue: !Sub PublicSubnet1a
-      IamInstanceProfile: !Ref BastionHostIAMInstanceProfile
+      NetworkInterfaces:
+        - DeviceIndex: 0
+          SubnetId:
+            Fn::ImportValue: !Sub PublicSubnet1a
+      LaunchTemplate:
+        LaunchTemplateId:
+            Ref: BastionHostLaunchTemplate
+        Version:
+            Fn::GetAtt: BastionHostLaunchTemplate.LatestVersionNumber
       Tags:
         - Key: Name
           Value:
@@ -213,14 +202,15 @@ Resources:
   BastionHost1b:
     Type: AWS::EC2::Instance
     Properties:
-      ImageId: ami-09988af04120b3591
-      KeyName: !Ref BastionHostKeyPair
-      InstanceType: t3.small
-      SecurityGroupIds:
-        - Fn::ImportValue: !Sub BastionHostSecurityGroup
-      SubnetId:
-        Fn::ImportValue: !Sub PublicSubnet1b
-      IamInstanceProfile: !Ref BastionHostIAMInstanceProfile
+      NetworkInterfaces:
+        - DeviceIndex: 0
+          SubnetId:
+            Fn::ImportValue: !Sub PublicSubnet1b
+      LaunchTemplate:
+        LaunchTemplateId:
+          Ref: BastionHostLaunchTemplate
+        Version:
+          Fn::GetAtt: BastionHostLaunchTemplate.LatestVersionNumber
       Tags:
         - Key: Name
           Value:
@@ -275,15 +265,11 @@ Resources:
         - IpProtocol: tcp
           FromPort: 22
           ToPort: 22
-          CidrIp: 0.0.0.0/0
+          CidrIp: !Join ['', [!GetAtt BastionHost1a.PrivateIp, !Sub '/24']]
         - IpProtocol: tcp
           FromPort: 22
           ToPort: 22
-          CidrIp: !Join ['', [!GetAtt BastionHost1a.PrivateIp, !Sub '/32']]
-        - IpProtocol: tcp
-          FromPort: 22
-          ToPort: 22
-          CidrIp: !Join ['', [!GetAtt BastionHost1b.PrivateIp, !Sub '/32']]
+          CidrIp: !Join ['', [!GetAtt BastionHost1b.PrivateIp, !Sub '/24']]
           Description: "Allow the inbound rule to specific traffic of web server"
       SecurityGroupEgress:
         - IpProtocol: tcp
@@ -298,29 +284,47 @@ Resources:
 
   # ------------ Web server --------------------------------
   # --------------------------------------------------------
-  WebServerLaunchConfiguration:
-    Type: AWS::AutoScaling::LaunchConfiguration
+  WebServerLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
     Properties:
-      UserData:
-        Fn::Base64: !Sub |
-          #!/bin/bash
-          apt-get update -y
-          apt-get install apache2 -y
-          systemctl start apache2.service
-          cd /var/www/html
-          echo "Udacity Demo Web Server Up and Running!" > index.html
-      ImageId: ami-09988af04120b3591
-      InstanceType: t3.small
-      KeyName: !Ref WebserverKeyPair
-      IamInstanceProfile: !Ref WebServerInstanceProfile
-      SecurityGroups:
-        - Ref: WebServerSecurityGroup
-      BlockDeviceMappings:
-        - DeviceName: "/dev/sdk"
-          Ebs:
-            VolumeSize: '10'
+      LaunchTemplateData:
+        UserData:
+          Fn::Base64: !Sub |
+            #!/bin/bash
+            apt-get update -y
+            apt-get install apache2 -y
+            systemctl start apache2.service
+            cd /var/www/html
+            echo "it works! Udagram, Udacity" > index.html
+        ImageId: ami-053b0d53c279acc90
+        InstanceType: t3.small
+        KeyName: !Ref WebserverKeyPair
+        IamInstanceProfile:
+          Arn: !GetAtt
+            - WebServerInstanceProfile
+            - Arn
+        Monitoring:
+          Enabled: true
+        BlockDeviceMappings:
+          - DeviceName: "/dev/sdk"
+            Ebs:
+              VolumeSize: '10'
+              DeleteOnTermination: true
+              VolumeType: 'gp2'
+        NetworkInterfaces:
+          - AssociatePublicIpAddress: false
             DeleteOnTermination: true
-            VolumeType: 'gp2'
+            DeviceIndex: 0
+            Groups:
+              - Ref: WebServerSecurityGroup
+      LaunchTemplateName:
+        Fn::Join:
+          - ''
+          - - !Ref EnvironmentName
+            - "-web-server-launch-template-"
+            - Ref: "AWS::Region"
+  # ------------ Web server auto scaling group -------------
+  # --------------------------------------------------------
   WebServerAutoscalingGroup:
     Type: AWS::AutoScaling::AutoScalingGroup
     Properties:
@@ -330,6 +334,65 @@ Resources:
       MinSize: 2
       MaxSize: 4
       DesiredCapacity: 2
-      LaunchConfigurationName: !Ref WebServerLaunchConfiguration
+      LaunchTemplate:
+        LaunchTemplateId:
+          Ref: WebServerLaunchTemplate
+        Version:
+          Fn::GetAtt: WebServerLaunchTemplate.LatestVersionNumber
       TargetGroupARNs:
         - Fn::ImportValue: !Sub ALBTargetGroup
+
+  WebServerScaleUp:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AutoScalingGroupName: !Ref WebServerAutoscalingGroup
+      AdjustmentType: ChangeInCapacity
+      Cooldown: 300
+      ScalingAdjustment: 1
+  WebServerScaleDown:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AutoScalingGroupName: !Ref WebServerAutoscalingGroup
+      AdjustmentType: ChangeInCapacity
+      Cooldown: 300
+      ScalingAdjustment: -1
+
+  # ------------ CloudWatch monitoring ---------------------
+  # --------------------------------------------------------
+  CloudWatchHighCPUUsageAlert:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: 'WebServerCPUUsageHigh'
+      MetricName: CPU Usage
+      AlarmDescription: 'CPU usage is greater than 80% for 5 minutes'
+      Namespace: 'AWS/EC2'
+      Statistic: 'Average'
+      Period: '300'
+      EvaluationPeriods: '1'
+      Threshold: '80'
+      ComparisonOperator: 'GreaterThanThreshold'
+      AlarmActions:
+        - Ref: WebServerScaleUp
+      Dimensions:
+        - Name: 'AutoScalingGroupName'
+          Value:
+            Ref: WebServerAutoscalingGroup
+
+  CloudWatchLowCPUUsageAlert:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: 'WebServerCPUUsageLow'
+      AlarmDescription: 'CPU usage is less than 20% for 5 minutes'
+      MetricName: CPU Usage
+      Namespace: 'AWS/EC2'
+      Statistic: 'Average'
+      Period: '300'
+      EvaluationPeriods: '1'
+      Threshold: '20'
+      ComparisonOperator: 'GreaterThanThreshold'
+      AlarmActions:
+        - Ref: WebServerScaleDown
+      Dimensions:
+        - Name: 'AutoScalingGroupName'
+          Value:
+            Ref: WebServerAutoscalingGroup
