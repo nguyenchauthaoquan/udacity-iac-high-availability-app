@@ -437,7 +437,7 @@ Outputs:
     Export:
       Name: !Sub PrivateSubnet1b
   ALBTargetGroup:
-    Description: The exported target group
+    Description: The exported target group for references by the other templates
     Value: !Ref ALBTargetGroup
     Export:
       Name: !Sub ALBTargetGroup

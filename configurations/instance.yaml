@@ -287,35 +287,42 @@ Resources:
   WebServerLaunchTemplate:
     Type: AWS::EC2::LaunchTemplate
     Properties:
-      UserData:
-        Fn::Base64: !Sub |
-          #!/bin/bash
-          apt-get update -y
-          apt-get install apache2 -y
-          systemctl start apache2.service
-          cd /var/www/html
-          echo "it works! Udagram, Udacity" > index.html
-      ImageId: ami-053b0d53c279acc90
-      InstanceType: t3.small
-      KeyName: !Ref WebserverKeyPair
-      IamInstanceProfile:
-        Arn: !GetAtt
-          - WebServerInstanceProfile
-          - Arn
-      Monitoring:
-        Enabled: true
-      BlockDeviceMappings:
-        - DeviceName: "/dev/sdk"
-          Ebs:
-            VolumeSize: '10'
+      LaunchTemplateData:
+        UserData:
+          Fn::Base64: !Sub |
+            #!/bin/bash
+            apt-get update -y
+            apt-get install apache2 -y
+            systemctl start apache2.service
+            cd /var/www/html
+            echo "it works! Udagram, Udacity" > index.html
+        ImageId: ami-053b0d53c279acc90
+        InstanceType: t3.small
+        KeyName: !Ref WebserverKeyPair
+        IamInstanceProfile:
+          Arn: !GetAtt
+            - WebServerInstanceProfile
+            - Arn
+        Monitoring:
+          Enabled: true
+        BlockDeviceMappings:
+          - DeviceName: "/dev/sdk"
+            Ebs:
+              VolumeSize: '10'
+              DeleteOnTermination: true
+              VolumeType: 'gp2'
+        NetworkInterfaces:
+          - AssociatePublicIpAddress: false
             DeleteOnTermination: true
-            VolumeType: 'gp2'
-      NetworkInterfaces:
-        - AssociatePublicIpAddress: false
-          DeleteOnTermination: true
-          DeviceIndex: 0
-          Groups:
-            - Fn::ImportValue: !Sub WebServerSecurityGroup
+            DeviceIndex: 0
+            Groups:
+              - Ref: WebServerSecurityGroup
+      LaunchTemplateName:
+        Fn::Join:
+          - ''
+          - - !Ref EnvironmentName
+            - "-web-server-launch-template-"
+            - Ref: "AWS::Region"
   # ------------ Web server auto scaling group -------------
   # --------------------------------------------------------
   WebServerAutoscalingGroup:
@@ -328,8 +335,10 @@ Resources:
       MaxSize: 4
       DesiredCapacity: 2
       LaunchTemplate:
-        LaunchTemplateId: !Ref WebServerLaunchTemplate
-        Version: !GetAtt: WebServerLaunchTemplate.LatestVersionNumber
+        LaunchTemplateId:
+          Ref: WebServerLaunchTemplate
+        Version:
+          Fn::GetAtt: WebServerLaunchTemplate.LatestVersionNumber
       TargetGroupARNs:
         - Fn::ImportValue: !Sub ALBTargetGroup
 
@@ -363,7 +372,7 @@ Resources:
       Threshold: '80'
       ComparisonOperator: 'GreaterThanThreshold'
       AlarmActions:
-        Ref: WebServerScaleUp
+        - Ref: WebServerScaleUp
       Dimensions:
         - Name: 'AutoScalingGroupName'
           Value:
@@ -382,7 +391,7 @@ Resources:
       Threshold: '20'
       ComparisonOperator: 'GreaterThanThreshold'
       AlarmActions:
-        Ref: WebServerScaleDown
+        - Ref: WebServerScaleDown
       Dimensions:
         - Name: 'AutoScalingGroupName'
           Value:
