@@ -57,7 +57,7 @@ documentation: the directory of aws diagram
 #### Create stacks:
 step 1: go to configurations folder
 step 2: run create-network-stacks.sh to create the network stack
-step 3: run create-instance-stacks.sh after the network stack is created successfully (<font color="red"><strong>do not run this file first when we want to create stack, some resources are refer to network stacks</strong></font>)
+step 3: run create-instance-stacks.sh after the network stack is created successfully (<font color="red"><strong>do not run this file first when we want to create stack, some resources are refer to network stacks resources</strong></font>)
 step 4: access to the Application Load Balancer URL from the input (name of the output is TestingUrl)
 #### Update stacks:
 step 1: go to configurations folder
@@ -66,5 +66,5 @@ step 2: run update-instance-stacks.sh, if you want to update the instance stack 
 step 1: go to configurations folder
 step 2: run delete-instance-stacks.sh first and then delete-network-stacks.sh
 ### Testing URL
-The url have been working successfully. However, if you modify the region in the execution files, the following is not correct anymore
-http://netwo-appli-1a2pbdwv07fsy-1121358425.us-east-1.elb.amazonaws.com/
+It takes some time to let all targets in target group become healthy
+The ALB Url is in the screenshots folder, access to the link of TestingUrl
