@@ -18,9 +18,5 @@
   {
     "ParameterKey": "WebServerPolicies",
     "ParameterValue": "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore,arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess"
-  },
-  {
-    "ParameterKey": "DefaultPublicCidr",
-    "ParameterValue": "0.0.0.0/0"
   }
 ]

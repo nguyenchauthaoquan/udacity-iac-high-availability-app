@@ -18,10 +18,6 @@ Parameters:
   WebserverKeyPair:
     Description: The key pair for web server
     Type: 'AWS::EC2::KeyPair::KeyName'
-  DefaultPublicCidr:
-    Description: Default public CIDR range.
-    Type: String
-    Default: 0.0.0.0/0
 Resources:
   ApplicationBucket:
     Type: AWS::S3::Bucket
